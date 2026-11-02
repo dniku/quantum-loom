@@ -1,3 +1,5 @@
-# Scratch space for test artefacts: diffs, captured frames. Rebuilt every run.
+# Test scratch: diffs, captured frames, logs. Rebuilt every run.
 .tmp/
-# The bundle is generated from src/, so it is committed only deliberately.
+# Nix build symlink and result dirs.
+result
+result-*
