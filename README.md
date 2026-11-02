@@ -68,6 +68,12 @@ nix develop --command ./check.sh --engine chromium
 5. **Interaction** — the built page driven through its interface, asserting observable results (a drag moves the particle and explains itself, a narrow packet spreads, `hidden` controls actually hide, no page errors).
 6. **Golden screenshots** — byte comparison of 7 reviewed baselines across desktop and both phone orientations, plus the physics states.
 
+`nix flake check` and `nix build` were verified against the pinned nixpkgs; the
+full `nix develop --command ./check.sh` runs the identical command in CI. Local
+development and every result quoted above ran on Firefox (the reliable engine in
+this container — Chromium's headless sandbox needs syscalls it denies), and both
+engines are selectable with `--engine`.
+
 Regenerate and **review** baselines after an intentional visual change (a byte-equal screenshot proves pixels did not change, not that they look right — each new baseline is viewed before it is accepted):
 
 ```sh
