@@ -1,0 +1,3 @@
+# Scratch space for test artefacts: diffs, captured frames. Rebuilt every run.
+.tmp/
+# The bundle is generated from src/, so it is committed only deliberately.
