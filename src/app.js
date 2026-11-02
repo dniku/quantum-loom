@@ -548,6 +548,15 @@ function main() {
 
   window.addEventListener('resize', resizeOverlay);
 
+  // Tests drive time explicitly, so the animation must not start on its own
+  // under them: the page's first requestAnimationFrame otherwise advances the
+  // clock by a number of frames that depends on load timing, and a screenshot
+  // containing the elapsed-time readout is then not reproducible. Pausing from
+  // the harness via evaluate races that first frame, so it is honoured here,
+  // synchronously, before the loop ever starts.
+  const startPaused = new URLSearchParams(window.location.search).get('paused') === '1';
+  if (startPaused) view.playing = false;
+
   syncControlStates();
   prepareState();
   resizeOverlay();

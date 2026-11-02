@@ -279,12 +279,14 @@ footer p { margin: 0 0 6px; }
   .stage { grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); }
   .field-panel { position: sticky; top: var(--gap); }
   /*
-   * Landscape phones are wide but short (844x390), so the square field is sized
-   * against the viewport height rather than the column width. Without the cap
-   * the sticky panel is taller than the screen and its lower half is unreachable.
-   * --field-side feeds the single sizing rule above instead of a second one.
+   * The square field is sized against the viewport height, not the column width.
+   * Two reasons: a landscape phone (844x390) would otherwise push the sticky
+   * panel past the bottom of the screen, and on a desktop an uncapped field eats
+   * the whole viewport so the momentum strip — the other half of the comparison
+   * the app exists to make — falls below the fold. Reserving room for the strip
+   * keeps "same particle, two descriptions" in one glance.
    */
-  .field-stack { --field-side: min(100%, calc(100vh - 4.5 * var(--gap) - 3rem)); }
+  .field-stack { --field-side: min(100%, calc(100vh - 20rem)); }
   .side { display: flex; flex-direction: column; gap: var(--gap); }
 }
 
@@ -352,6 +354,18 @@ footer p { margin: 0 0 6px; }
         <canvas id="overlay" aria-hidden="true"></canvas>
       </div>
 
+      <figure class="spectrum-strip">
+        <div class="spectrum-frame spectrum-frame--inline">
+          <canvas id="spectrum" aria-label="Momentum-space probability density: the Fourier transform of the wavefunction above."></canvas>
+        </div>
+        <figcaption>
+          <strong>The same particle, in momentum</strong> — the Fourier transform of the picture above,
+          answering how fast and which way instead of where. Centre means not moving; bright structure far
+          from the centre means a wide range of momenta, which is exactly what a narrow blob requires.
+          <span class="spectrum-strip--meta">Log brightness.</span>
+        </figcaption>
+      </figure>
+
       <h2 class="state-title" id="state-title">&nbsp;</h2>
       <p class="state-text" id="state-text"></p>
       <p class="state-bounds" id="state-bounds"></p>
@@ -362,24 +376,12 @@ footer p { margin: 0 0 6px; }
         equation, recomputed on a 128&nbsp;×&nbsp;128 grid every frame — not a recorded animation and
         not a decorative effect.
       </p>
-      <figure class="spectrum-strip">
-        <div class="spectrum-frame spectrum-frame--inline">
-          <canvas id="spectrum" aria-label="Momentum-space probability density: the Fourier transform of the wavefunction above."></canvas>
-        </div>
-        <figcaption>
-          <strong>The same particle, in momentum</strong> — the Fourier transform of the picture above,
-          showing how fast and which way instead of where. Centre means not moving. Bright structure far
-          from the centre means a wide range of momenta, which is exactly what a narrow blob requires.
-          <span class="spectrum-strip--meta">Log brightness.</span>
-        </figcaption>
-      </figure>
-
       <p class="lede lede--howto">
         <strong>What you can do:</strong> press where you want the particle and drag, then let go. It
         starts moving the way you flicked. A tap drops it almost still; a long, sharp flick gives it a
         definite shove — and because of the Fourier trade-off, a more definite momentum means a
         <em>less</em> definite position, so a hard flick produces a wider blob, not a tighter one. Try
-        both and compare the momentum picture beside it.
+        both and compare the momentum picture above.
       </p>
     </section>
 
@@ -1832,6 +1834,15 @@ function main() {
   elements.field.addEventListener('pointercancel', endPluck);
 
   window.addEventListener('resize', resizeOverlay);
+
+  // Tests drive time explicitly, so the animation must not start on its own
+  // under them: the page's first requestAnimationFrame otherwise advances the
+  // clock by a number of frames that depends on load timing, and a screenshot
+  // containing the elapsed-time readout is then not reproducible. Pausing from
+  // the harness via evaluate races that first frame, so it is honoured here,
+  // synchronously, before the loop ever starts.
+  const startPaused = new URLSearchParams(window.location.search).get('paused') === '1';
+  if (startPaused) view.playing = false;
 
   syncControlStates();
   prepareState();

@@ -48,9 +48,13 @@ const update = process.argv.includes('--update');
  * physics regression; full pages are captured separately for layout.
  */
 const SCENARIOS = [
-  { name: 'desktop-page', scene: 'desktop', fullPage: true, setup: async () => {} },
-  { name: 'phone-portrait-page', scene: 'phone-portrait', fullPage: false, setup: async () => {} },
-  { name: 'phone-landscape-page', scene: 'phone-landscape', fullPage: false, setup: async () => {} },
+  // Full-page captures pause and advance a fixed number of frames like every
+  // other scenario: the default state is a spreading packet, and photographing
+  // it while the page's own animation loop is still running captures whatever
+  // frame the wall clock happened to reach.
+  { name: 'desktop-page', scene: 'desktop', fullPage: true, setup: async (page) => stepFrames(page, 3) },
+  { name: 'phone-portrait-page', scene: 'phone-portrait', fullPage: false, setup: async (page) => stepFrames(page, 3) },
+  { name: 'phone-landscape-page', scene: 'phone-landscape', fullPage: false, setup: async (page) => stepFrames(page, 3) },
   {
     name: 'field-ground-state',
     scene: 'desktop',

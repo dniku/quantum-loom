@@ -271,12 +271,14 @@ footer p { margin: 0 0 6px; }
   .stage { grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); }
   .field-panel { position: sticky; top: var(--gap); }
   /*
-   * Landscape phones are wide but short (844x390), so the square field is sized
-   * against the viewport height rather than the column width. Without the cap
-   * the sticky panel is taller than the screen and its lower half is unreachable.
-   * --field-side feeds the single sizing rule above instead of a second one.
+   * The square field is sized against the viewport height, not the column width.
+   * Two reasons: a landscape phone (844x390) would otherwise push the sticky
+   * panel past the bottom of the screen, and on a desktop an uncapped field eats
+   * the whole viewport so the momentum strip — the other half of the comparison
+   * the app exists to make — falls below the fold. Reserving room for the strip
+   * keeps "same particle, two descriptions" in one glance.
    */
-  .field-stack { --field-side: min(100%, calc(100vh - 4.5 * var(--gap) - 3rem)); }
+  .field-stack { --field-side: min(100%, calc(100vh - 20rem)); }
   .side { display: flex; flex-direction: column; gap: var(--gap); }
 }
 

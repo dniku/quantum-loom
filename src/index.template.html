@@ -24,6 +24,18 @@
         <canvas id="overlay" aria-hidden="true"></canvas>
       </div>
 
+      <figure class="spectrum-strip">
+        <div class="spectrum-frame spectrum-frame--inline">
+          <canvas id="spectrum" aria-label="Momentum-space probability density: the Fourier transform of the wavefunction above."></canvas>
+        </div>
+        <figcaption>
+          <strong>The same particle, in momentum</strong> — the Fourier transform of the picture above,
+          answering how fast and which way instead of where. Centre means not moving; bright structure far
+          from the centre means a wide range of momenta, which is exactly what a narrow blob requires.
+          <span class="spectrum-strip--meta">Log brightness.</span>
+        </figcaption>
+      </figure>
+
       <h2 class="state-title" id="state-title">&nbsp;</h2>
       <p class="state-text" id="state-text"></p>
       <p class="state-bounds" id="state-bounds"></p>
@@ -34,24 +46,12 @@
         equation, recomputed on a 128&nbsp;×&nbsp;128 grid every frame — not a recorded animation and
         not a decorative effect.
       </p>
-      <figure class="spectrum-strip">
-        <div class="spectrum-frame spectrum-frame--inline">
-          <canvas id="spectrum" aria-label="Momentum-space probability density: the Fourier transform of the wavefunction above."></canvas>
-        </div>
-        <figcaption>
-          <strong>The same particle, in momentum</strong> — the Fourier transform of the picture above,
-          showing how fast and which way instead of where. Centre means not moving. Bright structure far
-          from the centre means a wide range of momenta, which is exactly what a narrow blob requires.
-          <span class="spectrum-strip--meta">Log brightness.</span>
-        </figcaption>
-      </figure>
-
       <p class="lede lede--howto">
         <strong>What you can do:</strong> press where you want the particle and drag, then let go. It
         starts moving the way you flicked. A tap drops it almost still; a long, sharp flick gives it a
         definite shove — and because of the Fourier trade-off, a more definite momentum means a
         <em>less</em> definite position, so a hard flick produces a wider blob, not a tighter one. Try
-        both and compare the momentum picture beside it.
+        both and compare the momentum picture above.
       </p>
     </section>
 

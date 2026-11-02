@@ -1,0 +1,47 @@
+# The same command as local development, in the same pinned toolchain. This is
+# deliberately not a second recipe with node and playwright installed by hand: a
+# CI that defines "correct" differently from the local shell is a CI that drifts.
+#
+# The flake is what makes that reproducibility real. flake.lock pins nixpkgs to
+# one commit, so CI cannot pick up a new node or Playwright and repaint the
+# golden screenshots differently from the machine the baselines came from.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      # fetch-depth 0: the artifact is a build product committed alongside its
+      # sources, and keeping full history lets any later "does the committed
+      # artifact match a rebuild" check see the commit that produced it.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Pinned to a released tag. Pinning matters: an unpinned installer could
+      # change how nix itself resolves the lock between runs.
+      - uses: cachix/install-nix-action@v31.11.3
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run the acceptance checklist
+        run: nix develop --command ./check.sh --engine firefox
+
+      # On failure, the frames CI saw are the difference between "the layout
+      # moved" and "the font differs on this runner", so keep them.
+      - name: Upload test output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-output
+          path: .tmp/
+          if-no-files-found: ignore
+          retention-days: 7

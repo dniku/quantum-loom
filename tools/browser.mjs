@@ -103,7 +103,11 @@ export async function openScene(engines, engineName, scene, url, options = {}) {
     if (message.type() === 'error') problems.push(`console.error: ${message.text()}`);
   });
   page.on('requestfailed', (request) => problems.push(`requestfailed: ${request.url()}`));
-  await page.goto(url, { waitUntil: 'load' });
+  // Open paused so the simulation's clock advances only when a test steps it;
+  // see app.js for why this has to happen before the first frame rather than
+  // from here. A caller can opt out with pause: false.
+  const pausedUrl = options.pause === false ? url : `${url}${url.includes('?') ? '&' : '?'}paused=1`;
+  await page.goto(pausedUrl, { waitUntil: 'load' });
   try {
     await page.waitForFunction(() => document.documentElement.dataset.quantumReady === '1', { timeout: 20_000 });
   } catch (error) {
@@ -161,8 +165,20 @@ export async function dragField(page, from, to, samples = 12) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
 }
 
-/** Advance the simulation deterministically, bypassing wall-clock animation. */
+/**
+ * Advance the simulation deterministically and take over timekeeping.
+ *
+ * Pausing first is not an optimisation, it is what makes the photographed frame
+ * meaningful: the page runs its own requestAnimationFrame loop, so while that
+ * is live the number of steps between here and a screenshot is whatever the wall
+ * clock allows, and nothing is reproducible. After this call the only thing that
+ * moves the simulation is this function, so a scenario that says "100 frames"
+ * means exactly 100 frames every time.
+ */
 export async function stepFrames(page, count) {
+  await page.evaluate(() => {
+    window.__quantum.view.playing = false;
+  });
   await page.evaluate((n) => window.__quantum.stepFrames(n), count);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
 }
