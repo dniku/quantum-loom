@@ -1556,7 +1556,7 @@ function applyPluck(start, current) {
   view.parameters.offsetY = (start.v - 0.5) * GRID;
   if (drag < 0.02) {
     view.parameters.width = 13;
-    preparePacketWithoutOffsetReset();
+    placePacket(null);
     return;
   }
   // A sharper flick gives a more definite momentum and hence a broader packet:
@@ -1567,50 +1567,53 @@ function applyPluck(start, current) {
   // because a hard-coded 24 once threw "too wide for a 128-cell box" on exactly
   // the emphatic flick the control is meant to reward.
   view.parameters.width = Math.min(maxPacketWidth(GRID), 10 + drag * cells * 1.1);
-  preparePacketWithKick({ x: dx, y: dy });
+  placePacket({ x: dx, y: dy });
 }
 
-/** Prepare the packet, then give it the phase tilt implied by a flick. */
-function preparePacketWithKick(kick) {
+/**
+ * Place a packet at the current offset, optionally with a momentum kick, and
+ * write the explanation that matches what was actually done.
+ *
+ * A tap and a flick are the same gesture with and without momentum, so they are
+ * one function: `kick === null` means "at rest", anything else is a direction
+ * and strength. The copy is generated from that same branch, so the sentence on
+ * screen cannot describe a state the physics did not create.
+ */
+function placePacket(kick) {
   simulation.setState(StateKind.PACKET, view.parameters);
-  const magnitude = Math.hypot(kick.x, kick.y);
-  const angle = Math.atan2(kick.y, kick.x);
-  // Boost by exp(i p . x): a plane-wave phase tilt, which is exactly a
-  // translation of the momentum distribution by p. Doing it as a phase rather
-  // than by shifting the array keeps the packet's shape and makes the spectral
-  // dot move to a radius that the panel can be read against.
-  const strength = magnitude * GRID * 0.55;
-  const { grid } = simulation;
-  for (let iy = 0; iy < grid; iy += 1) {
-    for (let ix = 0; ix < grid; ix += 1) {
-      const index = iy * grid + ix;
-      const x = ix + 0.5 - grid / 2;
-      const y = iy + 0.5 - grid / 2;
-      const phase = strength * (Math.cos(angle) * x + Math.sin(angle) * y);
-      const cos = Math.cos(phase);
-      const sin = Math.sin(phase);
-      const re = simulation.psi[index * 2];
-      const im = simulation.psi[index * 2 + 1];
-      simulation.psi[index * 2] = re * cos - im * sin;
-      simulation.psi[index * 2 + 1] = re * sin + im * cos;
+  if (kick) {
+    // Boost by exp(i p · x): a plane-wave phase tilt, which is exactly a
+    // translation of the momentum distribution by p. Applying it as a phase
+    // rather than shifting the array keeps the packet's shape and puts the
+    // spectral dot at a radius the panel can be read against.
+    const magnitude = Math.hypot(kick.x, kick.y);
+    const angle = Math.atan2(kick.y, kick.x);
+    const strength = magnitude * GRID * 0.55;
+    const { grid } = simulation;
+    for (let iy = 0; iy < grid; iy += 1) {
+      for (let ix = 0; ix < grid; ix += 1) {
+        const index = iy * grid + ix;
+        const x = ix + 0.5 - grid / 2;
+        const y = iy + 0.5 - grid / 2;
+        const phase = strength * (Math.cos(angle) * x + Math.sin(angle) * y);
+        const cos = Math.cos(phase);
+        const sin = Math.sin(phase);
+        const re = simulation.psi[index * 2];
+        const im = simulation.psi[index * 2 + 1];
+        simulation.psi[index * 2] = re * cos - im * sin;
+        simulation.psi[index * 2 + 1] = re * sin + im * cos;
+      }
     }
+    // setState cleared the absorption counter after preparing the field, and the
+    // phase tilt above conserves it, so the total is still correct here.
+    elements.stateTitle.textContent = 'Packet you flicked';
+    elements.stateText.textContent =
+      'You placed a packet here and gave it a sideways push. In the spectrum, watch the bright spot sit off-centre: off-centre means it is moving, and the further out it sits, the faster it goes.';
+  } else {
+    elements.stateTitle.textContent = 'Packet you placed';
+    elements.stateText.textContent =
+      'A particle placed here, at rest. It has no defined momentum, so the spectrum is a broad glow rather than a dot — and as the packet spreads you are watching the momentum spread it was born with pull it apart.';
   }
-  simulation.absorbed = 0;
-  elements.stateTitle.textContent = 'Packet you flicked';
-  elements.stateText.textContent =
-    'You placed a packet here and gave it a sideways push. In the spectrum, watch the bright spot sit off-centre: off-centre means it is moving, and the further out it sits, the faster it goes.';
-  elements.stateBounds.textContent = stateBoundsNote({});
-  drawStaticOverlays();
-  renderFrame();
-  updateStats();
-}
-
-/** Prepare a stationary packet at the current offset. */
-function preparePacketWithoutOffsetReset() {
-  simulation.setState(StateKind.PACKET, view.parameters);
-  elements.stateTitle.textContent = 'Packet you placed';
-  elements.stateText.textContent =
-    'A particle placed here, at rest. It has no defined momentum, so the spectrum is a broad ring rather than a dot — and as the packet spreads you are watching the momentum spread it was born with pull it apart.';
   elements.stateBounds.textContent = stateBoundsNote({});
   drawStaticOverlays();
   renderFrame();
