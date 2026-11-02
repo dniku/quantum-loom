@@ -24,23 +24,23 @@
         <canvas id="overlay" aria-hidden="true"></canvas>
       </div>
 
-      <p class="lede">
-        <strong>What you are looking at:</strong> the chance of finding one quantum particle at each
-        point. Bright means likely, dark means unlikely. It is a real simulation of the Schrödinger
-        equation, computed on a 128&nbsp;×&nbsp;128 grid every frame — nothing here is a pre-recorded
-        animation or a decorative effect.
-      </p>
-      <p class="lede">
-        <strong>What you can do:</strong> press where you want the particle and drag. Releasing sets it
-        going, in the direction you flicked. A short flick or a tap drops it almost still; a long, sharp
-        flick gives it a definite shove — and, because of the Fourier trade-off below, a more definite
-        momentum makes its position <em>less</em> definite, so a hard flick produces a wider blob, not a
-        tighter one. Try both and compare the right-hand picture.
-      </p>
-
       <h2 class="state-title" id="state-title">&nbsp;</h2>
       <p class="state-text" id="state-text"></p>
       <p class="state-bounds" id="state-bounds"></p>
+
+      <p class="lede">
+        <strong>What you are looking at:</strong> the chance of finding one quantum particle at each
+        point. Bright means likely, dark means unlikely. This is a real simulation of the Schrödinger
+        equation, recomputed on a 128&nbsp;×&nbsp;128 grid every frame — not a recorded animation and
+        not a decorative effect.
+      </p>
+      <p class="lede lede--howto">
+        <strong>What you can do:</strong> press where you want the particle and drag, then let go. It
+        starts moving the way you flicked. A tap drops it almost still; a long, sharp flick gives it a
+        definite shove — and because of the Fourier trade-off, a more definite momentum means a
+        <em>less</em> definite position, so a hard flick produces a wider blob, not a tighter one. Try
+        both and compare the momentum picture beside it.
+      </p>
     </section>
 
     <div class="side">
@@ -112,18 +112,21 @@
           <canvas id="spectrum" aria-label="Momentum-space probability density, the Fourier transform of the wavefunction."></canvas>
           <p class="spectrum-caption">Fourier transform of the picture on the left · log brightness · centre = not moving</p>
         </div>
-        <p class="note">
-          This is the identical quantum state described a different way: instead of "where is it?", it
-          answers "how fast, and which way?". Both pictures come from the same numbers, so anything you see
-          trade off between them is real and not a coincidence of drawing.
-        </p>
-        <p class="note">
-          <strong>Why a narrow blob cannot be calm.</strong> A wave confined to a small region has to be
-          built by adding together many wavelengths — that is simply what the Fourier transform says about
-          any wave, sound or water or this. So squashing the particle down necessarily fills the momentum
-          picture; the two widths are locked together. That is the whole reason quantum particles cannot
-          both sit still and stay in one place.
-        </p>
+        <details class="deep" open>
+          <summary>Reading the two pictures together</summary>
+          <p class="note">
+            This is the identical quantum state described a different way: instead of "where is it?", it
+            answers "how fast, and which way?". Both pictures come from the same numbers, so anything you
+            see trade off between them is real and not a coincidence of drawing.
+          </p>
+          <p class="note">
+            <strong>Why a narrow blob cannot be calm.</strong> A wave confined to a small region has to be
+            built by adding together many wavelengths — that is simply what the Fourier transform says
+            about any wave, sound or water or this. So squashing the particle down necessarily fills the
+            momentum picture; the two widths are locked together. That is the whole reason quantum
+            particles cannot both sit still and stay in one place.
+          </p>
+        </details>
       </section>
 
       <section class="panel" aria-label="Measurements">
@@ -147,13 +150,16 @@
   </div>
 
   <footer>
-    <p>
-      <strong>How this works.</strong> One particle, mass 1, ħ = 1, in a flat 2-D box. The wavefunction is
-      advanced with a spectral method: the Schrödinger equation is diagonal in Fourier space, so each step
-      multiplies every wavelength by its exact phase and transforms back. That is why the total probability
-      stays at 1.000 instead of quietly drifting, and why a standing wave really does stand perfectly still.
-    </p>
-    <p>Runs entirely offline. No network, no storage, nothing collected.</p>
+    <details class="deep">
+      <summary>How this is simulated</summary>
+      <p>
+        One particle, mass 1, ħ = 1, in a flat 2-D box. The wavefunction is advanced with a spectral
+        method: the Schrödinger equation is diagonal in Fourier space, so each step multiplies every
+        wavelength by its exact phase and transforms back. That is why the total probability stays at
+        1.000 instead of quietly drifting, and why a standing wave really does stand perfectly still.
+      </p>
+      <p>Runs entirely offline. No network, no storage, nothing collected.</p>
+    </details>
   </footer>
 </main>
 <script type="module">/*__QUANTUM_JS__*/</script>

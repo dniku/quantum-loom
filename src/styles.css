@@ -100,12 +100,22 @@ body {
 
 .field-stack {
   position: relative;
-  width: 100%;
+  /*
+   * A square sized by width, with an explicit max side so a tall desktop
+   * column cannot make it enormous. The earlier rule combined `max-height`
+   * with `width: auto` on an aspect-ratio box, which resolved the width to the
+   * height (zero, since nothing gave it one) and collapsed the field to nothing
+   * on portrait phones — the main interaction was simply absent from the page.
+   * `margin-inline: auto` keeps it centred when the column is wider than tall.
+   */
+  width: min(100%, var(--field-side, 100%));
   aspect-ratio: 1;
+  margin-inline: auto;
   border-radius: 10px;
   overflow: hidden;
   background: #04050c;
   border: 1px solid var(--line);
+  flex: none;
 }
 
 .field-stack canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -249,16 +259,42 @@ footer p { margin: 0 0 6px; }
 @media (min-aspect-ratio: 11/10) and (min-width: 780px) {
   .stage { grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); }
   .field-panel { position: sticky; top: var(--gap); }
-  /* On a short landscape phone the sticky field must not push controls off the
-     viewport, so cap it against the viewport height and let the column scroll. */
-  .field-stack { max-height: calc(100vh - 2.5 * var(--gap)); width: auto; aspect-ratio: 1; }
+  /*
+   * Landscape phones are wide but short (844x390), so the square field is sized
+   * against the viewport height rather than the column width. Without the cap
+   * the sticky panel is taller than the screen and its lower half is unreachable.
+   * --field-side feeds the single sizing rule above instead of a second one.
+   */
+  .field-stack { --field-side: min(100%, calc(100vh - 4.5 * var(--gap) - 3rem)); }
   .side { display: flex; flex-direction: column; gap: var(--gap); }
 }
 
-@media (max-width: 779px) {
+@media (max-width: 779px) and (orientation: portrait) {
   .stage { grid-template-columns: minmax(0, 1fr); }
-  /* Portrait: the field is the hero and stays near square, but must not fill
-     the whole screen — the invitation to touch has to be visible with it. */
-  .field-stack { max-height: 52vh; width: auto; margin: 0 auto; }
+  /*
+   * Portrait phone: the field takes the full available width and the reading
+   * order is invitation, field, then one short line of what it is. Everything
+   * wordy sits further down, because a square at full width already consumes
+   * most of a phone screen and the point is to touch it, not read at it.
+   */
+  .field-stack { --field-side: 100%; }
   body { font-size: 16px; }
+  .field-panel .lede--howto { display: none; }
 }
+
+/* --- disclosures ------------------------------------------------------ */
+
+.deep { border-top: 1px solid var(--line); padding-top: 9px; margin-top: 4px; }
+
+.deep > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-weight: 600;
+  /* Make the whole line a comfortable tap target rather than the word itself. */
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.deep[open] > summary { margin-bottom: 6px; }

@@ -19,7 +19,9 @@ const GRID = 128;
 /** What the app remembers between frames. Plain object, no framework. */
 const view = {
   kind: StateKind.PACKET,
-  parameters: { width: 7, offsetX: 0, offsetY: 0, m: 3, n: 1 },
+  // width 13 covers about 30% of the box: a clear shape with dark space around
+  // it, so spreading and drifting read as motion rather than as the edges.
+  parameters: { width: 13, offsetX: 0, offsetY: 0, m: 3, n: 1 },
   boundary: Boundary.PERIODIC,
   wellWidth: 40,
   view: 'density',
@@ -257,13 +259,13 @@ function applyPluck(start, current) {
   view.parameters.offsetX = (start.u - 0.5) * GRID;
   view.parameters.offsetY = (start.v - 0.5) * GRID;
   if (drag < 0.02) {
-    view.parameters.width = 7;
+    view.parameters.width = 13;
     preparePacketWithoutOffsetReset();
     return;
   }
   // A sharper flick gives a more definite momentum and hence a broader packet:
   // the uncertainty trade-off delivered as a gesture rather than as a slider.
-  view.parameters.width = Math.min(18, 4 + drag * cells * 0.9);
+  view.parameters.width = Math.min(24, 10 + drag * cells * 1.1);
   preparePacketWithKick({ x: dx, y: dy });
 }
 

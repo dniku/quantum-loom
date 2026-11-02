@@ -108,12 +108,22 @@ body {
 
 .field-stack {
   position: relative;
-  width: 100%;
+  /*
+   * A square sized by width, with an explicit max side so a tall desktop
+   * column cannot make it enormous. The earlier rule combined `max-height`
+   * with `width: auto` on an aspect-ratio box, which resolved the width to the
+   * height (zero, since nothing gave it one) and collapsed the field to nothing
+   * on portrait phones — the main interaction was simply absent from the page.
+   * `margin-inline: auto` keeps it centred when the column is wider than tall.
+   */
+  width: min(100%, var(--field-side, 100%));
   aspect-ratio: 1;
+  margin-inline: auto;
   border-radius: 10px;
   overflow: hidden;
   background: #04050c;
   border: 1px solid var(--line);
+  flex: none;
 }
 
 .field-stack canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -257,19 +267,45 @@ footer p { margin: 0 0 6px; }
 @media (min-aspect-ratio: 11/10) and (min-width: 780px) {
   .stage { grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); }
   .field-panel { position: sticky; top: var(--gap); }
-  /* On a short landscape phone the sticky field must not push controls off the
-     viewport, so cap it against the viewport height and let the column scroll. */
-  .field-stack { max-height: calc(100vh - 2.5 * var(--gap)); width: auto; aspect-ratio: 1; }
+  /*
+   * Landscape phones are wide but short (844x390), so the square field is sized
+   * against the viewport height rather than the column width. Without the cap
+   * the sticky panel is taller than the screen and its lower half is unreachable.
+   * --field-side feeds the single sizing rule above instead of a second one.
+   */
+  .field-stack { --field-side: min(100%, calc(100vh - 4.5 * var(--gap) - 3rem)); }
   .side { display: flex; flex-direction: column; gap: var(--gap); }
 }
 
-@media (max-width: 779px) {
+@media (max-width: 779px) and (orientation: portrait) {
   .stage { grid-template-columns: minmax(0, 1fr); }
-  /* Portrait: the field is the hero and stays near square, but must not fill
-     the whole screen — the invitation to touch has to be visible with it. */
-  .field-stack { max-height: 52vh; width: auto; margin: 0 auto; }
+  /*
+   * Portrait phone: the field takes the full available width and the reading
+   * order is invitation, field, then one short line of what it is. Everything
+   * wordy sits further down, because a square at full width already consumes
+   * most of a phone screen and the point is to touch it, not read at it.
+   */
+  .field-stack { --field-side: 100%; }
   body { font-size: 16px; }
+  .field-panel .lede--howto { display: none; }
 }
+
+/* --- disclosures ------------------------------------------------------ */
+
+.deep { border-top: 1px solid var(--line); padding-top: 9px; margin-top: 4px; }
+
+.deep > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-weight: 600;
+  /* Make the whole line a comfortable tap target rather than the word itself. */
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.deep[open] > summary { margin-bottom: 6px; }
 </style>
 </head>
 <body>
@@ -288,23 +324,23 @@ footer p { margin: 0 0 6px; }
         <canvas id="overlay" aria-hidden="true"></canvas>
       </div>
 
-      <p class="lede">
-        <strong>What you are looking at:</strong> the chance of finding one quantum particle at each
-        point. Bright means likely, dark means unlikely. It is a real simulation of the Schrödinger
-        equation, computed on a 128&nbsp;×&nbsp;128 grid every frame — nothing here is a pre-recorded
-        animation or a decorative effect.
-      </p>
-      <p class="lede">
-        <strong>What you can do:</strong> press where you want the particle and drag. Releasing sets it
-        going, in the direction you flicked. A short flick or a tap drops it almost still; a long, sharp
-        flick gives it a definite shove — and, because of the Fourier trade-off below, a more definite
-        momentum makes its position <em>less</em> definite, so a hard flick produces a wider blob, not a
-        tighter one. Try both and compare the right-hand picture.
-      </p>
-
       <h2 class="state-title" id="state-title">&nbsp;</h2>
       <p class="state-text" id="state-text"></p>
       <p class="state-bounds" id="state-bounds"></p>
+
+      <p class="lede">
+        <strong>What you are looking at:</strong> the chance of finding one quantum particle at each
+        point. Bright means likely, dark means unlikely. This is a real simulation of the Schrödinger
+        equation, recomputed on a 128&nbsp;×&nbsp;128 grid every frame — not a recorded animation and
+        not a decorative effect.
+      </p>
+      <p class="lede lede--howto">
+        <strong>What you can do:</strong> press where you want the particle and drag, then let go. It
+        starts moving the way you flicked. A tap drops it almost still; a long, sharp flick gives it a
+        definite shove — and because of the Fourier trade-off, a more definite momentum means a
+        <em>less</em> definite position, so a hard flick produces a wider blob, not a tighter one. Try
+        both and compare the momentum picture beside it.
+      </p>
     </section>
 
     <div class="side">
@@ -376,18 +412,21 @@ footer p { margin: 0 0 6px; }
           <canvas id="spectrum" aria-label="Momentum-space probability density, the Fourier transform of the wavefunction."></canvas>
           <p class="spectrum-caption">Fourier transform of the picture on the left · log brightness · centre = not moving</p>
         </div>
-        <p class="note">
-          This is the identical quantum state described a different way: instead of "where is it?", it
-          answers "how fast, and which way?". Both pictures come from the same numbers, so anything you see
-          trade off between them is real and not a coincidence of drawing.
-        </p>
-        <p class="note">
-          <strong>Why a narrow blob cannot be calm.</strong> A wave confined to a small region has to be
-          built by adding together many wavelengths — that is simply what the Fourier transform says about
-          any wave, sound or water or this. So squashing the particle down necessarily fills the momentum
-          picture; the two widths are locked together. That is the whole reason quantum particles cannot
-          both sit still and stay in one place.
-        </p>
+        <details class="deep" open>
+          <summary>Reading the two pictures together</summary>
+          <p class="note">
+            This is the identical quantum state described a different way: instead of "where is it?", it
+            answers "how fast, and which way?". Both pictures come from the same numbers, so anything you
+            see trade off between them is real and not a coincidence of drawing.
+          </p>
+          <p class="note">
+            <strong>Why a narrow blob cannot be calm.</strong> A wave confined to a small region has to be
+            built by adding together many wavelengths — that is simply what the Fourier transform says
+            about any wave, sound or water or this. So squashing the particle down necessarily fills the
+            momentum picture; the two widths are locked together. That is the whole reason quantum
+            particles cannot both sit still and stay in one place.
+          </p>
+        </details>
       </section>
 
       <section class="panel" aria-label="Measurements">
@@ -411,13 +450,16 @@ footer p { margin: 0 0 6px; }
   </div>
 
   <footer>
-    <p>
-      <strong>How this works.</strong> One particle, mass 1, ħ = 1, in a flat 2-D box. The wavefunction is
-      advanced with a spectral method: the Schrödinger equation is diagonal in Fourier space, so each step
-      multiplies every wavelength by its exact phase and transforms back. That is why the total probability
-      stays at 1.000 instead of quietly drifting, and why a standing wave really does stand perfectly still.
-    </p>
-    <p>Runs entirely offline. No network, no storage, nothing collected.</p>
+    <details class="deep">
+      <summary>How this is simulated</summary>
+      <p>
+        One particle, mass 1, ħ = 1, in a flat 2-D box. The wavefunction is advanced with a spectral
+        method: the Schrödinger equation is diagonal in Fourier space, so each step multiplies every
+        wavelength by its exact phase and transforms back. That is why the total probability stays at
+        1.000 instead of quietly drifting, and why a standing wave really does stand perfectly still.
+      </p>
+      <p>Runs entirely offline. No network, no storage, nothing collected.</p>
+    </details>
   </footer>
 </main>
 <script>
@@ -595,9 +637,13 @@ class Simulation {
    * @param {number} [options.stepsPerFrame] Substeps per rendered frame.
    * @param {string} [options.boundary]      Boundary enum.
    */
-  constructor({ grid, dt = 0.02, stepsPerFrame = 2, boundary = Boundary.PERIODIC }) {
+  constructor({ grid, dt = 0.2, stepsPerFrame = 1, boundary = Boundary.PERIODIC }) {
     if ((grid & (grid - 1)) !== 0) throw new Error(`grid must be a power of two, got ${grid}`);
     this.grid = grid;
+    // dt is a display-timescale choice, not a stability one: the spectral
+    // propagator is exact for any dt, so 0.2 rather than a textbook 0.02 makes a
+    // packet visibly spread in a few seconds instead of a minute. The analytic
+    // spreading law is asserted to hold at this dt in the physics tests.
     this.dt = dt;
     this.stepsPerFrame = stepsPerFrame;
     this.boundary = boundary;
@@ -1159,7 +1205,9 @@ const GRID = 128;
 /** What the app remembers between frames. Plain object, no framework. */
 const view = {
   kind: StateKind.PACKET,
-  parameters: { width: 7, offsetX: 0, offsetY: 0, m: 3, n: 1 },
+  // width 13 covers about 30% of the box: a clear shape with dark space around
+  // it, so spreading and drifting read as motion rather than as the edges.
+  parameters: { width: 13, offsetX: 0, offsetY: 0, m: 3, n: 1 },
   boundary: Boundary.PERIODIC,
   wellWidth: 40,
   view: 'density',
@@ -1347,7 +1395,16 @@ function pointerToPosition(event) {
 function beginPluck(event) {
   if (activePointer !== null) return;
   activePointer = { id: event.pointerId, start: pointerToPosition(event), current: pointerToPosition(event) };
-  elements.field.setPointerCapture?.(event.pointerId);
+  // setPointerCapture throws on a synthetic pointer id, which is what the
+  // automated checks dispatch. It is a convenience here (it keeps the drag alive
+  // if the finger leaves the canvas), so a failure is not worth losing the
+  // gesture over -- but it must not become a page error either.
+  try {
+    elements.field.setPointerCapture?.(event.pointerId);
+  } catch {
+    // Synthetic or already-released pointer: the drag still works via the events
+    // that follow on the canvas.
+  }
   elements.hint.classList.add('is-active');
   event.preventDefault();
 }
@@ -1388,13 +1445,13 @@ function applyPluck(start, current) {
   view.parameters.offsetX = (start.u - 0.5) * GRID;
   view.parameters.offsetY = (start.v - 0.5) * GRID;
   if (drag < 0.02) {
-    view.parameters.width = 7;
+    view.parameters.width = 13;
     preparePacketWithoutOffsetReset();
     return;
   }
   // A sharper flick gives a more definite momentum and hence a broader packet:
   // the uncertainty trade-off delivered as a gesture rather than as a slider.
-  view.parameters.width = Math.min(18, 4 + drag * cells * 0.9);
+  view.parameters.width = Math.min(24, 10 + drag * cells * 1.1);
   preparePacketWithKick({ x: dx, y: dy });
 }
 
