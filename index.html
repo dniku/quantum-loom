@@ -290,6 +290,23 @@ footer p { margin: 0 0 6px; }
   .field-panel .lede--howto { display: none; }
 }
 
+
+/* --- position + momentum, side by side -------------------------------- */
+
+.spectrum-strip {
+  margin: 4px 0 0;
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.spectrum-strip figcaption { font-size: 0.82rem; color: var(--text-dim); }
+.spectrum-strip figcaption strong { color: var(--text); }
+.spectrum-strip--meta { display: block; margin-top: 4px; font-size: 0.74rem; opacity: 0.8; }
+
+.spectrum-frame--inline { aspect-ratio: 1; width: 84px; }
+
 /* --- disclosures ------------------------------------------------------ */
 
 .deep { border-top: 1px solid var(--line); padding-top: 9px; margin-top: 4px; }
@@ -334,6 +351,18 @@ footer p { margin: 0 0 6px; }
         equation, recomputed on a 128&nbsp;×&nbsp;128 grid every frame — not a recorded animation and
         not a decorative effect.
       </p>
+      <figure class="spectrum-strip">
+        <div class="spectrum-frame spectrum-frame--inline">
+          <canvas id="spectrum" aria-label="Momentum-space probability density: the Fourier transform of the wavefunction above."></canvas>
+        </div>
+        <figcaption>
+          <strong>The same particle, in momentum</strong> — the Fourier transform of the picture above,
+          showing how fast and which way instead of where. Centre means not moving. Bright structure far
+          from the centre means a wide range of momenta, which is exactly what a narrow blob requires.
+          <span class="spectrum-strip--meta">Log brightness.</span>
+        </figcaption>
+      </figure>
+
       <p class="lede lede--howto">
         <strong>What you can do:</strong> press where you want the particle and drag, then let go. It
         starts moving the way you flicked. A tap drops it almost still; a long, sharp flick gives it a
@@ -404,29 +433,6 @@ footer p { margin: 0 0 6px; }
         </div>
 
         <button type="button" class="play" id="playButton" aria-pressed="true">Pause</button>
-      </section>
-
-      <section class="panel" aria-label="Momentum spectrum">
-        <h2 class="state-title">The same particle, in momentum</h2>
-        <div class="spectrum-frame">
-          <canvas id="spectrum" aria-label="Momentum-space probability density, the Fourier transform of the wavefunction."></canvas>
-          <p class="spectrum-caption">Fourier transform of the picture on the left · log brightness · centre = not moving</p>
-        </div>
-        <details class="deep" open>
-          <summary>Reading the two pictures together</summary>
-          <p class="note">
-            This is the identical quantum state described a different way: instead of "where is it?", it
-            answers "how fast, and which way?". Both pictures come from the same numbers, so anything you
-            see trade off between them is real and not a coincidence of drawing.
-          </p>
-          <p class="note">
-            <strong>Why a narrow blob cannot be calm.</strong> A wave confined to a small region has to be
-            built by adding together many wavelengths — that is simply what the Fourier transform says
-            about any wave, sound or water or this. So squashing the particle down necessarily fills the
-            momentum picture; the two widths are locked together. That is the whole reason quantum
-            particles cannot both sit still and stay in one place.
-          </p>
-        </details>
       </section>
 
       <section class="panel" aria-label="Measurements">

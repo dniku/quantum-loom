@@ -282,6 +282,23 @@ footer p { margin: 0 0 6px; }
   .field-panel .lede--howto { display: none; }
 }
 
+
+/* --- position + momentum, side by side -------------------------------- */
+
+.spectrum-strip {
+  margin: 4px 0 0;
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.spectrum-strip figcaption { font-size: 0.82rem; color: var(--text-dim); }
+.spectrum-strip figcaption strong { color: var(--text); }
+.spectrum-strip--meta { display: block; margin-top: 4px; font-size: 0.74rem; opacity: 0.8; }
+
+.spectrum-frame--inline { aspect-ratio: 1; width: 84px; }
+
 /* --- disclosures ------------------------------------------------------ */
 
 .deep { border-top: 1px solid var(--line); padding-top: 9px; margin-top: 4px; }
