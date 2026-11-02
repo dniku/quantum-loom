@@ -16,6 +16,9 @@ import { Simulation, StateKind, Boundary } from './quantum.js';
 
 const GRID = 128;
 
+/** Field is painted at 2x the physics grid: smooth enough on a phone, cheap enough for 60fps. */
+const RENDER_SCALE = 2;
+
 /** What the app remembers between frames. Plain object, no framework. */
 const view = {
   kind: StateKind.PACKET,
@@ -87,7 +90,7 @@ function stateBoundsNote(prepared) {
 
 /** Paint one frame of the wavefunction and, if shown, its spectrum. */
 function renderFrame() {
-  simulation.render(fieldBuffer.data, view.view, view.gain);
+  simulation.renderUpscaled(fieldBuffer.data, view.view, view.gain, GRID * RENDER_SCALE);
   elements.fieldContext.putImageData(fieldImageData, 0, 0);
   if (view.showSpectrum && spectrumBuffer) {
     paintSpectrum();
@@ -423,10 +426,15 @@ function main() {
   // Buffers are GRID-sized and drawn up by CSS; the simulation therefore always
   // works at one fixed resolution whatever the screen, which is what makes the
   // screenshots comparable between a phone and a desktop.
-  elements.field.width = GRID;
-  elements.field.height = GRID;
+  // The field canvas is RENDER_SCALE x the physics grid, painted by a wrapping
+  // bilinear filter rather than by the browser's own edge-clamping smoothing.
+  // That is what removes the false dark seam on the periodic boundary and the
+  // blocky look of nearest-neighbour upscaling, while the simulation itself
+  // stays at GRID for its frame budget.
+  elements.field.width = GRID * RENDER_SCALE;
+  elements.field.height = GRID * RENDER_SCALE;
   elements.fieldContext = elements.field.getContext('2d');
-  fieldBuffer = elements.fieldContext.createImageData(GRID, GRID);
+  fieldBuffer = elements.fieldContext.createImageData(GRID * RENDER_SCALE, GRID * RENDER_SCALE);
 
   if (view.showSpectrum) {
     elements.spectrum.width = GRID;

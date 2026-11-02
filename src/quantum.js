@@ -425,6 +425,59 @@ export class Simulation {
   }
 
   /**
+   * Paint psi into a `side`-by-`side` RGBA buffer, upsampling the grid with a
+   * bilinear filter that **wraps** at the edges.
+   *
+   * This exists because the field is drawn into a much larger CSS box, and the
+   * browser's own smoothing clamps at the image border rather than wrapping.
+   * For a periodic box the value just outside the left edge is the right edge,
+   * so clamping shows up as a false dark seam and a rippling border along
+   * exactly one side of the picture — visible on the ground state, where the
+   * density is genuinely continuous all the way around (measured wrap-to-wrap
+   * jump 0.0000). Interpolating here with wrap addressing removes the seam, and
+   * doing it at, say, 2x the grid also beats the blocky look of nearest-neighbour
+   * upscaling without paying for physics at the higher resolution.
+   *
+   * @param {Uint8ClampedArray} target  side*side*4 bytes.
+   * @param {'density'|'phase'} view
+   * @param {number} gain
+   * @param {number} side  Output side length; a multiple of the grid is not required.
+   */
+  renderUpscaled(target, view, gain, side) {
+    const { grid } = this;
+    // Paint once at grid resolution, then interpolate. Cheaper than evaluating
+    // the tone map per output pixel, and it keeps the two paths identical in
+    // colour: this is the same picture, just sampled more finely.
+    const small = this._scratchSmall ?? (this._scratchSmall = new Uint8ClampedArray(grid * grid * 4));
+    this.render(small, view, gain);
+    for (let oy = 0; oy < side; oy += 1) {
+      // Map the output pixel centre back to grid coordinates, offset by half a
+      // pixel so the interpolation is centred on samples rather than on corners.
+      const gy = (((oy + 0.5) * grid) / side - 0.5 + grid) % grid;
+      const y0 = Math.floor(gy);
+      const fy = gy - y0;
+      const y1 = (y0 + 1) % grid;
+      for (let ox = 0; ox < side; ox += 1) {
+        const gx = (((ox + 0.5) * grid) / side - 0.5 + grid) % grid;
+        const x0 = Math.floor(gx);
+        const fx = gx - x0;
+        const x1 = (x0 + 1) % grid;
+        const i00 = (y0 * grid + x0) * 4;
+        const i10 = (y0 * grid + x1) * 4;
+        const i01 = (y1 * grid + x0) * 4;
+        const i11 = (y1 * grid + x1) * 4;
+        const at = (oy * side + ox) * 4;
+        for (let channel = 0; channel < 3; channel += 1) {
+          const top = small[i00 + channel] + (small[i10 + channel] - small[i00 + channel]) * fx;
+          const bottom = small[i01 + channel] + (small[i11 + channel] - small[i01 + channel]) * fx;
+          target[at + channel] = top + (bottom - top) * fy;
+        }
+        target[at + 3] = 255;
+      }
+    }
+  }
+
+  /**
    * Momentum-space probability density |phi(kx, ky)|^2, peak-normalised to 1,
    * shifted so k = 0 is the centre of the image.
    *
