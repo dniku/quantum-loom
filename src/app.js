@@ -19,6 +19,12 @@ const GRID = 128;
 /** Field is painted at 2x the physics grid: smooth enough on a phone, cheap enough for 60fps. */
 const RENDER_SCALE = 2;
 
+/**
+ * Widest packet placement may request. Delegated to the physics module so the
+ * gesture and the validity check can never disagree about the boundary.
+ */
+const maxPacketWidth = (grid) => Simulation.maxPacketWidth(grid);
+
 /** What the app remembers between frames. Plain object, no framework. */
 const view = {
   kind: StateKind.PACKET,
@@ -268,7 +274,12 @@ function applyPluck(start, current) {
   }
   // A sharper flick gives a more definite momentum and hence a broader packet:
   // the uncertainty trade-off delivered as a gesture rather than as a slider.
-  view.parameters.width = Math.min(24, 10 + drag * cells * 1.1);
+  // The cap is the widest packet setState will accept on this grid (3 sigma must
+  // stay inside the box), so a hard flick is firm, not an exception. That bound
+  // is read from the simulation rather than repeated here as a second constant,
+  // because a hard-coded 24 once threw "too wide for a 128-cell box" on exactly
+  // the emphatic flick the control is meant to reward.
+  view.parameters.width = Math.min(maxPacketWidth(GRID), 10 + drag * cells * 1.1);
   preparePacketWithKick({ x: dx, y: dy });
 }
 

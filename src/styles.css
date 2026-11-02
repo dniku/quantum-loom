@@ -256,6 +256,17 @@ footer p { margin: 0 0 6px; }
 
 /* --- wide: field left, everything else right -------------------------- */
 
+/*
+ * Short viewports (a landscape phone is 844x390) spend their height on the
+ * header, which pushes the wave below the fold. On anything this short the
+ * subtitle is the first thing to go; the title still says what this is.
+ */
+@media (max-height: 460px) {
+  .masthead .subtitle { display: none; }
+  .masthead { padding-block: 2px; }
+  .app { gap: 10px; padding: 10px; }
+}
+
 @media (min-aspect-ratio: 11/10) and (min-width: 780px) {
   .stage { grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); }
   .field-panel { position: sticky; top: var(--gap); }

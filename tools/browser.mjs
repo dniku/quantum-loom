@@ -63,15 +63,30 @@ function launchFailureDetail(error) {
  * that half-works — canvas painted, one control throwing — looks fine in a
  * screenshot and is not fine.
  */
-export async function openScene(engines, engineName, scene, url) {
+/**
+ * Open the artifact at one scene's viewport and wait until the app declares
+ * itself ready. `requestfailed` and `pageerror` are collected because a bundle
+ * that half-works — canvas painted, one control throwing — looks fine in a
+ * screenshot and is not fine.
+ *
+ * Pass `reuseBrowser` to open an isolated context in a browser the caller
+ * already launched, which keeps a scenario suite from paying ~10s of launch
+ * cost per scenario; that caller owns closing the browser.
+ */
+export async function openScene(engines, engineName, scene, url, options = {}) {
   const engine = engines[engineName];
   if (!engine) throw new Error(`this Playwright build does not expose "${engineName}"`);
-  let browser;
-  try {
-    browser = await engine.launch({ args: engineName === 'chromium' ? ['--autoplay-policy=no-user-gesture-required'] : [] });
-  } catch (error) {
-    throw new Error(`${engineName} could not start${launchFailureDetail(error)}`, { cause: error });
+  let browser = options.reuseBrowser;
+  if (browser === undefined) {
+    try {
+      browser = await engine.launch({ args: engineName === 'chromium' ? ['--autoplay-policy=no-user-gesture-required'] : [] });
+    } catch (error) {
+      throw new Error(`${engineName} could not start${launchFailureDetail(error)}`, { cause: error });
+    }
   }
+  const closeOnFailure = () => {
+    if (options.reuseBrowser === undefined) browser.close().catch(() => {});
+  };
   const context = await browser.newContext({
     viewport: { width: scene.width, height: scene.height },
     deviceScaleFactor: scene.device ? 2 : 1,
@@ -96,7 +111,7 @@ export async function openScene(engines, engineName, scene, url) {
     // means the script threw. Attach what the page said rather than reporting a
     // bare timeout, which sends you looking for a slow load instead of a crash.
     const text = await page.evaluate(() => document.body?.innerText?.slice(0, 400)).catch(() => '');
-    await browser.close();
+    closeOnFailure();
     throw new Error(
       `app never became ready in ${engineName} at ${scene.name}. ` +
         `page errors: ${problems.join(' | ') || 'none reported'}. body text: ${text}`,

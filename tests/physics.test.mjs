@@ -261,6 +261,16 @@ test('a packet too wide to fit the box is refused rather than silently wrapped',
   assert.throws(() => sim.setState(StateKind.PACKET, { width: 40 }), /too wide for a/);
 });
 
+test('the widest packet the app will ever ask for is one it accepts', () => {
+  // Regression: a hard flick once requested exactly the widest packet allowed
+  // and tripped the validity check, so the gesture the app invites threw. The
+  // placement code and the check now read one bound, which this locks down.
+  const sim = make();
+  const widest = Simulation.maxPacketWidth(GRID);
+  assert.doesNotThrow(() => sim.setState(StateKind.PACKET, { width: widest }));
+  assert.throws(() => sim.setState(StateKind.PACKET, { width: widest + 1 }), /too wide for a/);
+});
+
 test('unknown states and non-power-of-two grids fail loudly', () => {
   const sim = make();
   assert.throws(() => sim.setState('not-a-state', {}), /unknown state/);
