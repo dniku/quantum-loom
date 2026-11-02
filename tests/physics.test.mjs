@@ -20,6 +20,26 @@ function make(options = {}) {
   return new Simulation({ grid: GRID, dt: 0.02, stepsPerFrame: 1, ...options });
 }
 
+/**
+ * The same tests over the shipped time step matter independently of the ones
+ * over 0.02: dt is a display-timescale choice, and the claim being made is that
+ * the spectral propagator is exact for *any* dt. If that ever stopped being
+ * true, only the large-dt case would show it.
+ */
+test('the propagator is exact at the shipped time step, not just a small one', () => {
+  const sim = new Simulation({ grid: GRID, stepsPerFrame: 1 });
+  assert.equal(sim.dt, 0.2, 'default dt changed; update the spreading expectation deliberately');
+  sim.setState(StateKind.PACKET, { width: 6 });
+  const start = sim.uncertainties().sigmaX;
+  const steps = 40;
+  for (let i = 0; i < steps; i += 1) sim.propagate(sim.dt);
+  const now = sim.uncertainties().sigmaX;
+  const t = steps * sim.dt;
+  const expected = start * Math.sqrt(1 + (t / (2 * start * start)) ** 2);
+  const error = Math.abs(now - expected) / expected;
+  assert.ok(error < 0.02, `dt=0.2 spread ${now.toFixed(4)} vs analytic ${expected.toFixed(4)}`);
+});
+
 /** |psi|^2 as a flat array — the physical quantity, before any exposure. */
 function density(sim) {
   const out = new Float64Array(GRID * GRID);

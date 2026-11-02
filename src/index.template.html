@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="An interactive quantum particle: pluck it, watch it spread, and see why a narrow wave needs a wide range of momenta.">
+<title>Quantum Loom — pluck a wavefunction</title>
+<style>/*__QUANTUM_CSS__*/</style>
+</head>
+<body>
+<main class="app">
+  <header class="masthead">
+    <h1>Quantum Loom</h1>
+    <p class="subtitle">One quantum particle, simulated rather than faked — and the Fourier transform that makes it behave strangely.</p>
+  </header>
+
+  <div class="stage">
+    <section class="panel field-panel" aria-label="Wavefunction">
+      <p class="hint" id="hint">Press and drag anywhere on the picture, then let go</p>
+
+      <div class="field-stack">
+        <canvas id="field" aria-label="The quantum particle's probability density. Drag to place and flick it."></canvas>
+        <canvas id="overlay" aria-hidden="true"></canvas>
+      </div>
+
+      <p class="lede">
+        <strong>What you are looking at:</strong> the chance of finding one quantum particle at each
+        point. Bright means likely, dark means unlikely. It is a real simulation of the Schrödinger
+        equation, computed on a 128&nbsp;×&nbsp;128 grid every frame — nothing here is a pre-recorded
+        animation or a decorative effect.
+      </p>
+      <p class="lede">
+        <strong>What you can do:</strong> press where you want the particle and drag. Releasing sets it
+        going, in the direction you flicked. A short flick or a tap drops it almost still; a long, sharp
+        flick gives it a definite shove — and, because of the Fourier trade-off below, a more definite
+        momentum makes its position <em>less</em> definite, so a hard flick produces a wider blob, not a
+        tighter one. Try both and compare the right-hand picture.
+      </p>
+
+      <h2 class="state-title" id="state-title">&nbsp;</h2>
+      <p class="state-text" id="state-text"></p>
+      <p class="state-bounds" id="state-bounds"></p>
+    </section>
+
+    <div class="side">
+      <section class="panel controls" aria-label="Controls">
+        <div class="control-group">
+          <span class="control-label" id="label-state">Prepare a state</span>
+          <div class="chip-row" id="state-buttons" role="group" aria-labelledby="label-state"></div>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label" id="label-view">Picture shows</span>
+          <div class="chip-row" id="view-buttons" role="group" aria-labelledby="label-view"></div>
+          <p class="note">
+            Density is |ψ|², what a measurement of position would find. Phase is the direction the wave
+            is waving, which you cannot measure directly — but where the colours churn fastest, the particle
+            has momentum that way, which is why the phase view explains the spectrum next to it.
+          </p>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label" id="label-boundary">Edges of the box</span>
+          <div class="chip-row" id="boundary-buttons" role="group" aria-labelledby="label-boundary"></div>
+          <p class="note">
+            Periodic means the grid wraps around, like a video game screen: leave the right edge, arrive at
+            the left. Nothing is lost, so probability is conserved exactly. The walled box is a genuinely
+            different physical system: the wall absorbs whatever touches it, and the readout below tells you
+            how much of your particle has gone.
+          </p>
+        </div>
+
+        <div class="control-group" id="well-width-row" hidden>
+          <label class="control-label" for="wellWidth">Wall position</label>
+          <div class="slider-row">
+            <input type="range" id="wellWidth" min="12" max="63" step="1" value="40">
+            <output class="slider-value" id="wellWidth-value">40 cells</output>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="nodes">Energy of the excited state</label>
+          <div class="slider-row">
+            <input type="range" id="nodes" min="1" max="14" step="1" value="3">
+            <output class="slider-value" id="nodes-value">n = 3</output>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="speed">Time speed</label>
+          <div class="slider-row">
+            <input type="range" id="speed" min="0.5" max="4" step="0.5" value="1">
+            <output class="slider-value" id="speed-value">1.0×</output>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="gain">Brightness</label>
+          <div class="slider-row">
+            <input type="range" id="gain" min="0.3" max="4" step="0.1" value="1">
+            <output class="slider-value" id="gain-value">1.0</output>
+          </div>
+        </div>
+
+        <button type="button" class="play" id="playButton" aria-pressed="true">Pause</button>
+      </section>
+
+      <section class="panel" aria-label="Momentum spectrum">
+        <h2 class="state-title">The same particle, in momentum</h2>
+        <div class="spectrum-frame">
+          <canvas id="spectrum" aria-label="Momentum-space probability density, the Fourier transform of the wavefunction."></canvas>
+          <p class="spectrum-caption">Fourier transform of the picture on the left · log brightness · centre = not moving</p>
+        </div>
+        <p class="note">
+          This is the identical quantum state described a different way: instead of "where is it?", it
+          answers "how fast, and which way?". Both pictures come from the same numbers, so anything you see
+          trade off between them is real and not a coincidence of drawing.
+        </p>
+        <p class="note">
+          <strong>Why a narrow blob cannot be calm.</strong> A wave confined to a small region has to be
+          built by adding together many wavelengths — that is simply what the Fourier transform says about
+          any wave, sound or water or this. So squashing the particle down necessarily fills the momentum
+          picture; the two widths are locked together. That is the whole reason quantum particles cannot
+          both sit still and stay in one place.
+        </p>
+      </section>
+
+      <section class="panel" aria-label="Measurements">
+        <h2 class="state-title">Live measurements</h2>
+        <dl class="readout">
+          <dt>Position spread σ<sub>x</sub></dt><dd><span id="readout-sigma-x">–</span> cells</dd>
+          <dt>Momentum spread σ<sub>p</sub></dt><dd><span id="readout-sigma-p">–</span> ħ/cell</dd>
+          <dt>Product σ<sub>x</sub>σ<sub>p</sub></dt><dd><span id="readout-product">–</span></dd>
+          <dt>Time elapsed</dt><dd><span id="readout-time">–</span> a.u.</dd>
+          <dt>Probability left</dt><dd><span id="readout-norm">–</span></dd>
+          <div id="readout-absorbed-row" hidden><dt>Absorbed by the wall</dt><dd><span id="readout-absorbed">–</span></div>
+        </dl>
+        <p class="note">
+          The product of the two spreads is the interesting one: quantum mechanics forbids it from going
+          below 0.500 ħ (that number is ħ/2). It is computed from the live wavefunction every frame, never
+          clipped to look well-behaved, so if it ever dipped below the bound that would be a bug in this
+          page rather than a loophole in physics.
+        </p>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <p>
+      <strong>How this works.</strong> One particle, mass 1, ħ = 1, in a flat 2-D box. The wavefunction is
+      advanced with a spectral method: the Schrödinger equation is diagonal in Fourier space, so each step
+      multiplies every wavelength by its exact phase and transforms back. That is why the total probability
+      stays at 1.000 instead of quietly drifting, and why a standing wave really does stand perfectly still.
+    </p>
+    <p>Runs entirely offline. No network, no storage, nothing collected.</p>
+  </footer>
+</main>
+<script type="module">/*__QUANTUM_JS__*/</script>
+</body>
+</html>

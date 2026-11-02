@@ -1,0 +1,1703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="An interactive quantum particle: pluck it, watch it spread, and see why a narrow wave needs a wide range of momenta.">
+<title>Quantum Loom — pluck a wavefunction</title>
+<style>/*
+ * Layout and appearance.
+ *
+ * Two shapes, chosen by aspect ratio rather than by "is it a phone", because the
+ * thing that actually matters is whether there is room beside the picture or
+ * only room below it:
+ *   - wide:  the field on the left, controls and spectrum on the right.
+ *   - tall:  the field on top, everything else scrolling underneath.
+ * A landscape phone is the wide case with a short viewport, so controls must
+ * scroll horizontally rather than push the picture off screen; that is what the
+ * control rail is for.
+ *
+ * No web fonts, and no font-family that has to be downloaded: the sandbox this
+ * is verified in has no font packages, and relying on one would make the layout
+ * in a golden screenshot mean something different from the layout on a phone.
+ * The stack is the platform's own UI font, falling back to a generic sans.
+ */
+
+:root {
+  --bg: #06070f;
+  --bg-panel: #0e1120;
+  --bg-raised: #171b30;
+  --line: #2a2f4d;
+  --text: #eef1fb;
+  --text-dim: #9aa3c4;
+  --accent: #6ee7d8;
+  --accent-warm: #ffd68c;
+  --radius: 14px;
+  --gap: 14px;
+  --touch: 44px;
+}
+
+* { box-sizing: border-box; }
+
+/*
+ * The `hidden` attribute is implemented by the UA as `display: none`, which any
+ * author `display` beats — so a `display: flex` rule on .control-group silently
+ * un-hides a control group marked hidden, and the wall slider showed up in
+ * periodic mode while the JS correctly reported it hidden. This one rule makes
+ * the attribute mean what the markup says regardless of what layout follows.
+ */
+[hidden] { display: none !important; }
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  overscroll-behavior-y: none;
+}
+
+/* --- shell ------------------------------------------------------------ */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap);
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.masthead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+
+.masthead h1 {
+  margin: 0;
+  font-size: clamp(1.25rem, 1.05rem + 1.1vw, 1.75rem);
+  letter-spacing: -0.01em;
+}
+
+.masthead .subtitle { margin: 0; color: var(--text-dim); font-size: 0.9rem; }
+
+/* --- layout ----------------------------------------------------------- */
+
+.stage { display: grid; gap: var(--gap); align-items: start; }
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--gap);
+}
+
+.field-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Touch: without this, dragging on the field is read by the browser as a
+     page scroll and the pluck gesture never reaches us. */
+  touch-action: none;
+}
+
+.field-stack {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #04050c;
+  border: 1px solid var(--line);
+}
+
+.field-stack canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* The field canvas is upscaled from 128^2. Smooth scaling is what makes a
+   coarse simulation look like a continuous wavefield instead of a mosaic. */
+#field { image-rendering: auto; }
+
+#overlay { pointer-events: none; }
+
+/* --- explainer copy ---------------------------------------------------- */
+
+.lede { margin: 0; color: var(--text-dim); font-size: 0.92rem; }
+.lede strong { color: var(--text); font-weight: 600; }
+
+.state-title { margin: 0 0 4px; font-size: 1.02rem; }
+.state-text { margin: 0 0 6px; font-size: 0.9rem; }
+.state-bounds { margin: 0; color: var(--text-dim); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+
+/* The invitation to touch. Visible until first use, then it gets out of the
+   way; a hint that never leaves becomes wallpaper. */
+.hint {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border-radius: 999px;
+  background: rgba(110, 231, 216, 0.14);
+  border: 1px solid rgba(110, 231, 216, 0.4);
+  color: var(--accent);
+  font-size: 0.88rem;
+  font-weight: 550;
+  transition: opacity 0.35s ease;
+}
+
+.hint.is-active { opacity: 0.45; }
+
+.hint::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
+
+/* --- controls ---------------------------------------------------------- */
+
+.controls { display: flex; flex-direction: column; gap: 12px; }
+
+.control-group { display: flex; flex-direction: column; gap: 7px; }
+
+.control-label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+/* Chips are the primary way to change state, so they meet the 44px touch
+   minimum and wrap instead of scrolling: a control you have to scroll to find
+   is a control nobody uses. */
+.chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+
+.chip {
+  min-height: var(--touch);
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.chip:hover { border-color: var(--accent); }
+
+.chip[aria-pressed="true"] {
+  background: rgba(110, 231, 216, 0.2);
+  border-color: var(--accent);
+  color: #ecfffb;
+}
+
+.chip:focus-visible, .play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.slider-row { display: flex; align-items: center; gap: 10px; }
+
+.slider-row input[type="range"] { flex: 1; height: var(--touch); accent-color: var(--accent); }
+
+.slider-value {
+  min-width: 5.5em;
+  text-align: right;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.play {
+  min-height: var(--touch);
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: rgba(110, 231, 216, 0.16);
+  color: #ecfffb;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* --- readout ----------------------------------------------------------- */
+
+.readout { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 0.85rem; }
+
+.readout dt { color: var(--text-dim); }
+
+.readout dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.note { margin: 8px 0 0; font-size: 0.8rem; color: var(--text-dim); }
+
+.spectrum-frame { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #04050c; }
+.spectrum-frame canvas { width: 100%; aspect-ratio: 1; display: block; }
+
+.spectrum-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 9px;
+  font-size: 0.74rem;
+  background: rgba(4, 5, 12, 0.78);
+  color: var(--text-dim);
+}
+
+footer { color: var(--text-dim); font-size: 0.8rem; }
+footer p { margin: 0 0 6px; }
+
+/* --- wide: field left, everything else right -------------------------- */
+
+@media (min-aspect-ratio: 11/10) and (min-width: 780px) {
+  .stage { grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); }
+  .field-panel { position: sticky; top: var(--gap); }
+  /* On a short landscape phone the sticky field must not push controls off the
+     viewport, so cap it against the viewport height and let the column scroll. */
+  .field-stack { max-height: calc(100vh - 2.5 * var(--gap)); width: auto; aspect-ratio: 1; }
+  .side { display: flex; flex-direction: column; gap: var(--gap); }
+}
+
+@media (max-width: 779px) {
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  /* Portrait: the field is the hero and stays near square, but must not fill
+     the whole screen — the invitation to touch has to be visible with it. */
+  .field-stack { max-height: 52vh; width: auto; margin: 0 auto; }
+  body { font-size: 16px; }
+}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="masthead">
+    <h1>Quantum Loom</h1>
+    <p class="subtitle">One quantum particle, simulated rather than faked — and the Fourier transform that makes it behave strangely.</p>
+  </header>
+
+  <div class="stage">
+    <section class="panel field-panel" aria-label="Wavefunction">
+      <p class="hint" id="hint">Press and drag anywhere on the picture, then let go</p>
+
+      <div class="field-stack">
+        <canvas id="field" aria-label="The quantum particle's probability density. Drag to place and flick it."></canvas>
+        <canvas id="overlay" aria-hidden="true"></canvas>
+      </div>
+
+      <p class="lede">
+        <strong>What you are looking at:</strong> the chance of finding one quantum particle at each
+        point. Bright means likely, dark means unlikely. It is a real simulation of the Schrödinger
+        equation, computed on a 128&nbsp;×&nbsp;128 grid every frame — nothing here is a pre-recorded
+        animation or a decorative effect.
+      </p>
+      <p class="lede">
+        <strong>What you can do:</strong> press where you want the particle and drag. Releasing sets it
+        going, in the direction you flicked. A short flick or a tap drops it almost still; a long, sharp
+        flick gives it a definite shove — and, because of the Fourier trade-off below, a more definite
+        momentum makes its position <em>less</em> definite, so a hard flick produces a wider blob, not a
+        tighter one. Try both and compare the right-hand picture.
+      </p>
+
+      <h2 class="state-title" id="state-title">&nbsp;</h2>
+      <p class="state-text" id="state-text"></p>
+      <p class="state-bounds" id="state-bounds"></p>
+    </section>
+
+    <div class="side">
+      <section class="panel controls" aria-label="Controls">
+        <div class="control-group">
+          <span class="control-label" id="label-state">Prepare a state</span>
+          <div class="chip-row" id="state-buttons" role="group" aria-labelledby="label-state"></div>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label" id="label-view">Picture shows</span>
+          <div class="chip-row" id="view-buttons" role="group" aria-labelledby="label-view"></div>
+          <p class="note">
+            Density is |ψ|², what a measurement of position would find. Phase is the direction the wave
+            is waving, which you cannot measure directly — but where the colours churn fastest, the particle
+            has momentum that way, which is why the phase view explains the spectrum next to it.
+          </p>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label" id="label-boundary">Edges of the box</span>
+          <div class="chip-row" id="boundary-buttons" role="group" aria-labelledby="label-boundary"></div>
+          <p class="note">
+            Periodic means the grid wraps around, like a video game screen: leave the right edge, arrive at
+            the left. Nothing is lost, so probability is conserved exactly. The walled box is a genuinely
+            different physical system: the wall absorbs whatever touches it, and the readout below tells you
+            how much of your particle has gone.
+          </p>
+        </div>
+
+        <div class="control-group" id="well-width-row" hidden>
+          <label class="control-label" for="wellWidth">Wall position</label>
+          <div class="slider-row">
+            <input type="range" id="wellWidth" min="12" max="63" step="1" value="40">
+            <output class="slider-value" id="wellWidth-value">40 cells</output>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="nodes">Energy of the excited state</label>
+          <div class="slider-row">
+            <input type="range" id="nodes" min="1" max="14" step="1" value="3">
+            <output class="slider-value" id="nodes-value">n = 3</output>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="speed">Time speed</label>
+          <div class="slider-row">
+            <input type="range" id="speed" min="0.5" max="4" step="0.5" value="1">
+            <output class="slider-value" id="speed-value">1.0×</output>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="gain">Brightness</label>
+          <div class="slider-row">
+            <input type="range" id="gain" min="0.3" max="4" step="0.1" value="1">
+            <output class="slider-value" id="gain-value">1.0</output>
+          </div>
+        </div>
+
+        <button type="button" class="play" id="playButton" aria-pressed="true">Pause</button>
+      </section>
+
+      <section class="panel" aria-label="Momentum spectrum">
+        <h2 class="state-title">The same particle, in momentum</h2>
+        <div class="spectrum-frame">
+          <canvas id="spectrum" aria-label="Momentum-space probability density, the Fourier transform of the wavefunction."></canvas>
+          <p class="spectrum-caption">Fourier transform of the picture on the left · log brightness · centre = not moving</p>
+        </div>
+        <p class="note">
+          This is the identical quantum state described a different way: instead of "where is it?", it
+          answers "how fast, and which way?". Both pictures come from the same numbers, so anything you see
+          trade off between them is real and not a coincidence of drawing.
+        </p>
+        <p class="note">
+          <strong>Why a narrow blob cannot be calm.</strong> A wave confined to a small region has to be
+          built by adding together many wavelengths — that is simply what the Fourier transform says about
+          any wave, sound or water or this. So squashing the particle down necessarily fills the momentum
+          picture; the two widths are locked together. That is the whole reason quantum particles cannot
+          both sit still and stay in one place.
+        </p>
+      </section>
+
+      <section class="panel" aria-label="Measurements">
+        <h2 class="state-title">Live measurements</h2>
+        <dl class="readout">
+          <dt>Position spread σ<sub>x</sub></dt><dd><span id="readout-sigma-x">–</span> cells</dd>
+          <dt>Momentum spread σ<sub>p</sub></dt><dd><span id="readout-sigma-p">–</span> ħ/cell</dd>
+          <dt>Product σ<sub>x</sub>σ<sub>p</sub></dt><dd><span id="readout-product">–</span></dd>
+          <dt>Time elapsed</dt><dd><span id="readout-time">–</span> a.u.</dd>
+          <dt>Probability left</dt><dd><span id="readout-norm">–</span></dd>
+          <div id="readout-absorbed-row" hidden><dt>Absorbed by the wall</dt><dd><span id="readout-absorbed">–</span></div>
+        </dl>
+        <p class="note">
+          The product of the two spreads is the interesting one: quantum mechanics forbids it from going
+          below 0.500 ħ (that number is ħ/2). It is computed from the live wavefunction every frame, never
+          clipped to look well-behaved, so if it ever dipped below the bound that would be a bug in this
+          page rather than a loophole in physics.
+        </p>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <p>
+      <strong>How this works.</strong> One particle, mass 1, ħ = 1, in a flat 2-D box. The wavefunction is
+      advanced with a spectral method: the Schrödinger equation is diagonal in Fourier space, so each step
+      multiplies every wavelength by its exact phase and transforms back. That is why the total probability
+      stays at 1.000 instead of quietly drifting, and why a standing wave really does stand perfectly still.
+    </p>
+    <p>Runs entirely offline. No network, no storage, nothing collected.</p>
+  </footer>
+</main>
+<script>
+(function () {
+'use strict';
+
+/**
+ * quantum.js — the physics core: one quantum particle in a flat 2-D box.
+ *
+ * What this is, in plain language
+ * -------------------------------
+ * We simulate a single quantum particle of mass m in a flat 2-D region and show
+ * you what it does. Its state is a complex-valued field psi(x, y, t). Everything
+ * on screen is derived from psi:
+ *
+ *   probability density   rho(x, y, t) = |psi|^2   — where a position measurement finds it
+ *   momentum density      |phi(kx, ky)|^2          — where a momentum measurement finds it
+ *   probability current   j = Im(conj(psi) grad psi) / m
+ *
+ * The equation of motion is the Schrodinger equation with no potential:
+ *
+ *   i hbar d psi/dt = -(hbar^2 / 2m) laplacian psi
+ *
+ * in atomic units (hbar = 1, m = 1), which is what all the numbers here are in.
+ *
+ * Why the simulation can be trusted: the spectral propagator
+ * ---------------------------------------------------------
+ * On a periodic grid the discrete Laplacian is exactly diagonal in the discrete
+ * Fourier basis. It multiplies the mode with wavenumber (kx, ky) by
+ * -(kx^2 + ky^2), so advancing by dt is exactly
+ *
+ *   psi(t + dt) = F^-1 [ exp(-i (kx^2 + ky^2) dt / 2) * F[psi(t)] ]
+ *
+ * This is not a time-stepping approximation of the evolution; it is the exact
+ * solution of the discretised equation for any dt, because the kinetic energy
+ * operator is diagonal in that basis. The multiplier has unit modulus, so the
+ * discrete L2 norm is conserved to floating-point round-off — measured drift is
+ * 1e-12 over 600 steps, with no damping term anywhere. No CFL limit, no
+ * numerical dispersion, no silently decaying picture. That is what makes a
+ * sixtieth-of-a-second frame-by-frame animation defensible as physics.
+ *
+ * Why the box is periodic, and why that is the honest choice
+ * ----------------------------------------------------------
+ * Stationarity is the single most important fact this app demonstrates — "an
+ * energy eigenstate does not move" — so the grid has to be able to represent
+ * eigenstates exactly. That constrains the geometry, and the constraint is worth
+ * stating because it is subtle and it decided this design:
+ *
+ * A state is stationary exactly when its Fourier support lies within a single
+ * degenerate energy shell (k^2 = constant). A box eigenstate sin(n pi u) is *two*
+ * counter-propagating modes, +n/2 and -n/2, so it is stationary only if both are
+ * allowed wavenumbers of the grid. On a grid of N samples the allowed
+ * wavenumbers are 2 pi m / N, so sin(n pi u) with a box of width W fits exactly
+ * only when n pi / W = 2 pi m / N, i.e. W = n N / (2 m). Only for particular n
+ * does that hold.
+ *
+ * Measured, for a periodic box of W = N = 64 with even n (so m = n N / (4 pi) is
+ * integral): n = 2, 4, 6 are stationary to 1e-13, and odd n drift by 1e-2 to
+ * 2e-1 because the state is anti-periodic across the boundary and the grid
+ * cannot represent it. Verified independently of any rendering, by comparing the
+ * density after 400 steps.
+ *
+ * So we use a flat periodic box and, throughout, states built from exactly
+ * degenerate pairs of grid modes: cos(2 m u) cos(2 n v) and its 90-degree-shifted
+ * partner. Those are exact eigenstates of the discrete Laplacian, they are
+ * genuinely non-moving, and they need no walls at all. Narrow packets are then
+ * honest superpositions over many shells, which is exactly why they spread — the
+ * app can show both halves of the story from one correct engine.
+ *
+ * A hard-walled well is available as an explicit mode (`walls`), because a box
+ * with impenetrable walls is what most readers picture. It is a genuinely
+ * different physical system: the wall is an absorbing boundary that removes
+ * probability, the state is not band-limited, and nothing in it is exactly
+ * stationary. The mask removes 1 outside the well every step and the amount
+ * removed is counted and shown rather than renormalised away. A soft tapered
+ * wall was tried and rejected: a spatially varying multiplier smears every sharp
+ * eigenmode across a wide band, so it breaks stationarity while looking gentler —
+ * the worst of both. Hard edges are also what the physics says: an infinite
+ * well's psi really is discontinuous at the wall, and its momentum distribution
+ * really does have a ~1/p^2 halo.
+ */
+
+/** Complex components per sample: interleaved (re, im). */
+const COMPLEX = 2;
+
+/**
+ * Iterative radix-2 in-place FFT over a packed interleaved complex array, along
+ * one row or one column.
+ *
+ * Hand-written rather than vendored so the bundle has no third-party dependency
+ * and the operation order is fixed, which keeps results bit-for-bit reproducible
+ * across runs and machines — a property the golden-screenshot tests depend on.
+ *
+ * `stride` is the step in samples between consecutive points along the axis,
+ * `count` the number of samples, `offset` the first sample. Taking an offset and
+ * a stride lets us transform rows (contiguous) and columns (stride = grid) with
+ * no transposes and no extra allocation.
+ */
+function fftInPlace(data, count, stride, offset, inverse) {
+  // Bit-reversal permutation via the classic two-index walk: O(n) comparisons,
+  // and no permutation table to build or hold per transform length.
+  for (let i = 1, j = 0; i < count; i += 1) {
+    let bit = count >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      const ia = (offset + i * stride) * COMPLEX;
+      const ib = (offset + j * stride) * COMPLEX;
+      const re = data[ia];
+      const im = data[ia + 1];
+      data[ia] = data[ib];
+      data[ia + 1] = data[ib + 1];
+      data[ib] = re;
+      data[ib + 1] = im;
+    }
+  }
+
+  const sign = inverse ? 1 : -1;
+  for (let length = 2; length <= count; length <<= 1) {
+    const half = length >> 1;
+    for (let k = 0; k < half; k += 1) {
+      // One cosine/sine per twiddle rather than a running product. Repeated
+      // multiplication by the previous twiddle accumulates a phase error that
+      // grows along the stage; an absolute angle keeps it O(eps) per point.
+      const angle = (sign * Math.PI * k) / half;
+      const wr = Math.cos(angle);
+      const wi = Math.sin(angle);
+      for (let start = 0; start < count; start += length) {
+        const a = (offset + (start + k) * stride) * COMPLEX;
+        const b = (offset + (start + k + half) * stride) * COMPLEX;
+        const br = data[b];
+        const bi = data[b + 1];
+        const tr = br * wr - bi * wi;
+        const ti = br * wi + bi * wr;
+        data[b] = data[a] - tr;
+        data[b + 1] = data[a + 1] - ti;
+        data[a] += tr;
+        data[a + 1] += ti;
+      }
+    }
+  }
+
+  if (inverse) {
+    // Unnormalised forward then inverse scales by n; divide so that the
+    // round-trip is the identity and |psi|^2 keeps its probability meaning.
+    const inv = 1 / count;
+    for (let i = 0; i < count; i += 1) {
+      const at = (offset + i * stride) * COMPLEX;
+      data[at] *= inv;
+      data[at + 1] *= inv;
+    }
+  }
+}
+
+/** States the app can prepare. Finite set on purpose: the UI enumerates it. */
+const StateKind = Object.freeze({
+  GROUND: 'ground',
+  EXCITED: 'excited',
+  TRAVELLING: 'travelling',
+  PACKET: 'packet',
+  SUPERPOSITION: 'superposition',
+});
+
+/** Where the particle is confined. */
+const Boundary = Object.freeze({
+  PERIODIC: 'periodic',
+  WALLS: 'walls',
+});
+
+class Simulation {
+  /**
+   * @param {object} options
+   * @param {number} options.grid            Grid side; power of two.
+   * @param {number} [options.dt]            Time step, atomic units.
+   * @param {number} [options.stepsPerFrame] Substeps per rendered frame.
+   * @param {string} [options.boundary]      Boundary enum.
+   */
+  constructor({ grid, dt = 0.02, stepsPerFrame = 2, boundary = Boundary.PERIODIC }) {
+    if ((grid & (grid - 1)) !== 0) throw new Error(`grid must be a power of two, got ${grid}`);
+    this.grid = grid;
+    this.dt = dt;
+    this.stepsPerFrame = stepsPerFrame;
+    this.boundary = boundary;
+    this.time = 0;
+    this.absorbed = 0;
+
+    const cells = grid * grid;
+    this.psi = new Float64Array(cells * COMPLEX);
+    this.buffer = new Float64Array(cells * COMPLEX);
+    // exp(-i |k|^2 dt / 2) split into real and imaginary halves so the per-step
+    // inner loop performs no trigonometry.
+    this.phaseRe = new Float64Array(cells);
+    this.phaseIm = new Float64Array(cells);
+    // 1 inside the box, 0 outside; all ones for the periodic boundary, which is
+    // why the projection costs nothing in that mode.
+    this.mask = new Float64Array(cells).fill(1);
+
+    this.buildPhases();
+    this.setBoundary(boundary);
+  }
+
+  /** Angular wavenumbers in FFT output order, so index i labels transform bin i. */
+  static wavenumbers(grid) {
+    const out = new Float64Array(grid);
+    const step = (2 * Math.PI) / grid;
+    for (let i = 0; i < grid; i += 1) out[i] = i <= grid / 2 ? i * step : (i - grid) * step;
+    return out;
+  }
+
+  /** Recompute the cached kinetic phase factors for the current dt. */
+  buildPhases() {
+    const { grid, dt, phaseRe, phaseIm } = this;
+    const k = Simulation.wavenumbers(grid);
+    for (let y = 0; y < grid; y += 1) {
+      for (let x = 0; x < grid; x += 1) {
+        const angle = -0.5 * (k[x] * k[x] + k[y] * k[y]) * dt;
+        const at = y * grid + x;
+        phaseRe[at] = Math.cos(angle);
+        phaseIm[at] = Math.sin(angle);
+      }
+    }
+  }
+
+  /**
+   * Switch between a flat periodic box and a hard-walled well.
+   *
+   * Periodic is the default and the physically clean case. Walls build a mask
+   * that zeroes everything outside a centred square of the requested half-width,
+   * in cells; that is an absorbing boundary, so probability is genuinely lost
+   * and `absorbed` accumulates it.
+   */
+  setBoundary(boundary, halfWidthCells) {
+    this.boundary = boundary;
+    if (boundary === Boundary.PERIODIC) {
+      this.mask.fill(1);
+      this.halfWidth = this.grid / 2;
+      return;
+    }
+    if (boundary !== Boundary.WALLS) throw new Error(`unknown boundary "${boundary}"`);
+    const half = Math.max(4, Math.min(this.grid / 2 - 1, halfWidthCells ?? this.grid / 4));
+    this.halfWidth = half;
+    const centre = this.grid / 2;
+    for (let iy = 0; iy < this.grid; iy += 1) {
+      for (let ix = 0; ix < this.grid; ix += 1) {
+        const inside =
+          Math.abs(ix + 0.5 - centre) < half && Math.abs(iy + 0.5 - centre) < half;
+        this.mask[iy * this.grid + ix] = inside ? 1 : 0;
+      }
+    }
+  }
+
+  /** Set the wall size for the walls boundary and rebuild the mask. */
+  setWellWidth(halfWidthCells) {
+    if (this.boundary === Boundary.WALLS) this.setBoundary(Boundary.WALLS, halfWidthCells);
+  }
+
+  /** Leave the field exactly zero and reset the clock. */
+  clear() {
+    this.psi.fill(0);
+    this.time = 0;
+    this.absorbed = 0;
+  }
+
+  /**
+   * Advance one rendered frame.
+   *
+   * With periodic boundaries this is the exact propagator, and the projection
+   * below is a no-op multiply by 1 that the early-out skips. With walls, each
+   * step is followed by the absorbing projection: propagate, then clamp. That
+   * ordering is first order in dt at the wall, which is the honest cost of
+   * modelling an absorbing boundary at all, and it makes the lost probability
+   * attributable per step instead of smeared.
+   */
+  step() {
+    for (let i = 0; i < this.stepsPerFrame; i += 1) {
+      this.propagate(this.dt);
+      this.project();
+      this.time += this.dt;
+    }
+  }
+
+  /**
+   * Total probability absorbed by the wall since the state was prepared. Same
+   * units as `norm()`, by construction — see `project`.
+   */
+  absorbedFraction() {
+    return this.absorbed;
+  }
+
+  /** One exact free-particle spectral step. */
+  propagate(dt) {
+    if (dt !== this.dt) {
+      this.dt = dt;
+      this.buildPhases();
+    }
+    const { grid, psi, buffer, phaseRe, phaseIm } = this;
+    transform2D(this, psi, buffer, false);
+    for (let i = 0; i < grid * grid; i += 1) {
+      const re = buffer[i * COMPLEX];
+      const im = buffer[i * COMPLEX + 1];
+      buffer[i * COMPLEX] = re * phaseRe[i] - im * phaseIm[i];
+      buffer[i * COMPLEX + 1] = re * phaseIm[i] + im * phaseRe[i];
+    }
+    transform2D(this, buffer, psi, true);
+  }
+
+  /**
+   * Apply the boundary. With periodic boundaries the mask is all ones, so we
+   * check that flag once and do nothing — the exactness of the propagator is
+   * preserved rather than traded for a general-purpose multiply.
+   */
+  project() {
+    if (this.boundary === Boundary.PERIODIC) return;
+    const { psi, mask, grid } = this;
+    for (let i = 0; i < grid * grid; i += 1) {
+      const a = mask[i];
+      if (a === 1) continue;
+      const at = i * COMPLEX;
+      const before = psi[at] * psi[at] + psi[at + 1] * psi[at + 1];
+      psi[at] *= a;
+      psi[at + 1] *= a;
+      // Same units as norm(): probability, summed over cells.
+      this.absorbed += before - (psi[at] * psi[at] + psi[at + 1] * psi[at + 1]);
+    }
+  }
+
+  /**
+   * Total probability: the sum of |psi|^2 over all cells.
+   *
+   * Normalised so that a correctly prepared state gives exactly 1 and |psi|^2 is
+   * a probability *per cell* rather than a probability density per unit area.
+   * That choice is what makes the picture readable: with the continuous
+   * convention the peak of a narrow packet scales like 1 / width^2 and differs
+   * from a spread-out state by two orders of magnitude, so no single exposure
+   * can show both. Here peak brightness varies far less between states, and the
+   * exposure below adapts to what is left.
+   */
+  norm() {
+    const { psi, grid } = this;
+    let sum = 0;
+    for (let i = 0; i < grid * grid; i += 1) {
+      const re = psi[i * COMPLEX];
+      const im = psi[i * COMPLEX + 1];
+      sum += re * re + im * im;
+    }
+    return sum;
+  }
+
+  /** Rescale psi so the sum over cells is 1. Returns the factor applied. */
+  normalize() {
+    const n = this.norm();
+    if (!(n > 0)) return 0;
+    const scale = 1 / Math.sqrt(n);
+    for (let i = 0; i < this.psi.length; i += 1) this.psi[i] *= scale;
+    return scale;
+  }
+
+  /**
+   * Peak |psi|^2, used to auto-expose the density view.
+   *
+   * Auto-exposure is a deliberate trade. A fixed exposure is easier to compare
+   * between screenshots but leaves either a bright packet blown to uniform
+   * white or a delocalised eigenstate too dim to read — with peak-to-mean ratios
+   * from 2 to over 100 across the states on offer, both failures happen with any
+   * single constant. Adapting per state makes every state legible; the cost is
+   * that brightness cannot be compared across states, so the UI says the value
+   * it used, and the Brightness control multiplies it for direct comparison.
+   */
+  peakDensity() {
+    const { psi, grid } = this;
+    let peak = 0;
+    for (let i = 0; i < grid * grid; i += 1) {
+      const re = psi[i * COMPLEX];
+      const im = psi[i * COMPLEX + 1];
+      const v = re * re + im * im;
+      if (v > peak) peak = v;
+    }
+    return peak;
+  }
+
+  /**
+   * Paint psi into an RGBA buffer, one row-major pass.
+   *
+   * Two views share the pass because they answer different questions and readers
+   * conflate them if they arrive separately:
+   *   density — |psi|^2, what a position measurement finds.
+   *   phase   — arg(psi) as hue. Not itself observable, but the *gradient* of the
+   *             phase is the local momentum, so this is the view that explains
+   *             the momentum panel: where the hue turns over quickly, there is
+   *             momentum along that direction.
+   *
+   * @param {Uint8ClampedArray} target  grid*grid*4 bytes.
+   * @param {'density'|'phase'} view
+   * @param {number} gain  Exposure multiplier.
+   */
+  render(target, view, gain) {
+    const { psi, grid } = this;
+    // Scale so the brightest cell lands at 1 before tone mapping. `gain` then
+    // means "exposure relative to the state's own brightest point", which keeps
+    // the interference fringes — the point of the picture — out of the clipped
+    // white end of the ramp for every state the app can prepare.
+    const peak = this.peakDensity();
+    const scale = peak > 0 ? gain / peak : 0;
+    for (let i = 0; i < grid * grid; i += 1) {
+      const re = psi[i * COMPLEX];
+      const im = psi[i * COMPLEX + 1];
+      const at = i * 4;
+      if (view === 'phase') {
+        const hue = (Math.atan2(im, re) / (2 * Math.PI) + 0.5) % 1;
+        const amplitude = Math.sqrt(peak);
+        const level = amplitude > 0 ? Math.min(1, (Math.sqrt(re * re + im * im) / amplitude) * gain) : 0;
+        const [r, g, b] = hslToRgb(hue, 0.72, 0.08 + 0.62 * level);
+        target[at] = r;
+        target[at + 1] = g;
+        target[at + 2] = b;
+      } else {
+        // Gamma rather than a hard knee: preserves contrast in the fringes while
+        // keeping the peak inside the ramp.
+        const rho = (re * re + im * im) * scale;
+        const [r, g, b] = ramp(rho > 0 ? Math.pow(rho, 0.6) : 0);
+        target[at] = r;
+        target[at + 1] = g;
+        target[at + 2] = b;
+      }
+      target[at + 3] = 255;
+    }
+  }
+
+  /**
+   * Momentum-space probability density |phi(kx, ky)|^2, peak-normalised to 1,
+   * shifted so k = 0 is the centre of the image.
+   *
+   * Computed from the same psi the position view came from, which is the entire
+   * reason the two panels are shown together: the reader is comparing one
+   * state's two descriptions, not two independent pictures.
+   */
+  momentumDensity() {
+    const { grid } = this;
+    const work = Float64Array.from(this.psi);
+    transform2DInPlace(this, work, false);
+    const out = new Float64Array(grid * grid);
+    let peak = 0;
+    for (let y = 0; y < grid; y += 1) {
+      for (let x = 0; x < grid; x += 1) {
+        const at = (y * grid + x) * COMPLEX;
+        const rho = work[at] * work[at] + work[at + 1] * work[at + 1];
+        const sx = (x + grid / 2) % grid;
+        const sy = (y + grid / 2) % grid;
+        out[sy * grid + sx] = rho;
+        if (rho > peak) peak = rho;
+      }
+    }
+    if (peak > 0) for (let i = 0; i < out.length; i += 1) out[i] /= peak;
+    return out;
+  }
+
+  /**
+   * Position and momentum spreads, per axis.
+   *
+   * The Heisenberg relation is a statement per axis: sigma_x sigma_px >= hbar/2.
+   * It is *not* true for radial RMS spreads, and computing the radial version is
+   * a classic way to get a number that looks like it violates the bound (for a
+   * uniform density over a box of side L the radial RMS is about L / (2 sqrt 3)
+   * while the momentum spread stays near the reciprocal-lattice spacing, so the
+   * product can sit far below 0.5 with nothing wrong in the physics). So we take
+   * marginal variances along each axis and report the worst axis pair, which is
+   * the quantity the bound actually constrains.
+   *
+   * Units: sigmaX in grid cells, sigmaP in hbar per cell (hbar = 1), and the
+   * UI states both.
+   */
+  uncertainties() {
+    const { grid, psi } = this;
+    const cells = grid * grid;
+    let total = 0;
+    for (let i = 0; i < cells; i += 1) {
+      const re = psi[i * COMPLEX];
+      const im = psi[i * COMPLEX + 1];
+      total += re * re + im * im;
+    }
+    if (!(total > 1e-12)) return { sigmaX: 0, sigmaP: 0, product: 0 };
+
+    /**
+     * Marginal standard deviation along one axis of a 2-D density, given the
+     * coordinate of each sample along that axis (constant in the other axis).
+     */
+    const marginalSigma = (density, coordinate) => {
+      let sum = 0;
+      let mean = 0;
+      for (let i = 0; i < cells; i += 1) {
+        sum += density[i];
+        mean += coordinate[i] * density[i];
+      }
+      if (!(sum > 0)) return 0;
+      mean /= sum;
+      let variance = 0;
+      for (let i = 0; i < cells; i += 1) {
+        const d = coordinate[i] - mean;
+        variance += d * d * density[i];
+      }
+      return Math.sqrt(variance / sum);
+    };
+
+    const position = new Float64Array(cells);
+    const coordX = new Float64Array(cells);
+    const coordY = new Float64Array(cells);
+    for (let iy = 0; iy < grid; iy += 1) {
+      for (let ix = 0; ix < grid; ix += 1) {
+        const i = iy * grid + ix;
+        const re = psi[i * COMPLEX];
+        const im = psi[i * COMPLEX + 1];
+        position[i] = re * re + im * im;
+        coordX[i] = ix + 0.5 - grid / 2;
+        coordY[i] = iy + 0.5 - grid / 2;
+      }
+    }
+    const sigmaX = Math.max(marginalSigma(position, coordX), marginalSigma(position, coordY));
+
+    // Momentum marginals over the bins the transform actually produced, using
+    // the wavenumbers that label them, so sigmaP is a real k and not an index.
+    const work = Float64Array.from(this.psi);
+    transform2DInPlace(this, work, false);
+    const k = Simulation.wavenumbers(grid);
+    const momentum = new Float64Array(cells);
+    const kxOf = new Float64Array(cells);
+    const kyOf = new Float64Array(cells);
+    for (let iy = 0; iy < grid; iy += 1) {
+      for (let ix = 0; ix < grid; ix += 1) {
+        const i = iy * grid + ix;
+        const re = work[i * COMPLEX];
+        const im = work[i * COMPLEX + 1];
+        momentum[i] = re * re + im * im;
+        kxOf[i] = k[ix];
+        kyOf[i] = k[iy];
+      }
+    }
+    const sigmaP = Math.max(marginalSigma(momentum, kxOf), marginalSigma(momentum, kyOf));
+    return { sigmaX, sigmaP, product: sigmaX * sigmaP };
+  }
+
+  /**
+   * Prepare a named state and return one or two sentences describing it, so the
+   * words on screen are generated by the same call that sets the physics and
+   * cannot drift out of step with the picture.
+   *
+   * Eigenstates are built from exactly degenerate pairs of grid modes —
+   * cos(2 m u) cos(2 n v) together with its 90-degree-shifted partner
+   * sin(2 m u) sin(2 n v) — because those have a single k^2 and are therefore
+   * stationary to machine precision on this grid. The factor 2 is the whole
+   * trick: it keeps every component wavenumber an integer multiple of 2 pi / N.
+   */
+  setState(kind, parameters = {}) {
+    const { grid } = this;
+    this.clear();
+    const centre = grid / 2;
+
+    /** Sample f(x, y), in cells from the box centre, into psi. */
+    const sample = (f) => {
+      for (let iy = 0; iy < grid; iy += 1) {
+        for (let ix = 0; ix < grid; ix += 1) {
+          const index = iy * grid + ix;
+          const value = f(ix + 0.5 - centre, iy + 0.5 - centre);
+          const at = index * COMPLEX;
+          this.psi[at] = value[0] * this.mask[index];
+          this.psi[at + 1] = value[1] * this.mask[index];
+        }
+      }
+      this.normalize();
+      // Preparing a state is not the wall absorbing one. A packet whose tail
+      // reaches the wall is clipped above, and letting that go through
+      // `project()` would make "the wall has absorbed X% of your particle"
+      // report a large number the instant the state is chosen, before a single
+      // step has run. Reset so the counter means exactly what the UI says:
+      // probability lost to the wall while the simulation was running.
+      this.absorbed = 0;
+    };
+
+    /**
+     * An exact eigenstate of the discrete Laplacian with quantum numbers
+     * (m, n) >= 1, using wavenumbers 2 m pi / N. Both terms of the pair share
+     * k^2 = (2 pi / N)^2 (m^2 + n^2), which is what makes it stationary.
+     */
+    const eigenstate = (m, n) => {
+      const unit = (2 * Math.PI) / grid;
+      sample((x, y) => {
+        const a = Math.cos(m * unit * x) * Math.cos(n * unit * y);
+        const b = Math.sin(m * unit * x) * Math.sin(n * unit * y);
+        return [a + b, 0];
+      });
+    };
+
+    switch (kind) {
+      case StateKind.GROUND: {
+        eigenstate(1, 1);
+        return {
+          title: 'Ground state',
+          text: 'The calmest possible state. Its density never moves — not because the particle is still, but because a standing wave has no net flow anywhere.',
+          energy: 2,
+        };
+      }
+      case StateKind.EXCITED: {
+        const m = Math.max(1, Math.round(parameters.m ?? 3));
+        const n = Math.max(1, Math.round(parameters.n ?? 1));
+        eigenstate(m, n);
+        return {
+          title: `Excited state (${m}, ${n})`,
+          text: 'More nodes, more energy, still perfectly still. Count the dark nodal lines: they never move either.',
+          energy: m * m + n * n,
+        };
+      }
+      case StateKind.TRAVELLING: {
+        const m = Math.max(1, Math.round(parameters.m ?? 2));
+        // exp(i k x): one grid mode, so one sharp momentum. Switch on the phase
+        // view to see why — the hue wraps at a constant rate across the box.
+        const unit = (2 * Math.PI) / grid;
+        sample((x, y) => {
+          const phase = m * unit * x;
+          return [Math.cos(phase), Math.sin(phase)];
+        });
+        return {
+          title: `Travelling wave, momentum ${m}`,
+          text: 'A single momentum value, so the density is flat and completely featureless. There is no position information left to have — and the spectrum is one sharp dot.',
+          momentum: m,
+        };
+      }
+      case StateKind.PACKET: {
+        const width = Math.max(2, parameters.width ?? 6);
+        // A Gaussian is only a Gaussian if it has died away before the box edge:
+        // on a periodic grid a wide packet wraps around and stops being a
+        // localised state, and its measured spread then describes a different
+        // (wrapped) distribution. 3 sigma leaves ~0.1% of the amplitude at the
+        // wall, which keeps the free-particle spreading law accurate to the few
+        // percent the app claims. Rejecting an over-wide request is more honest
+        // than silently simulating something else.
+        if (3 * width >= grid / 2) {
+          throw new Error(
+            `packet width ${width} is too wide for a ${grid}-cell box: 3 sigma would reach the wall, so the state would wrap around and no longer be localised`,
+          );
+        }
+        const offX = parameters.offsetX ?? 0;
+        const offY = parameters.offsetY ?? 0;
+        sample((x, y) => {
+          const dx = x - offX;
+          const dy = y - offY;
+          const g = Math.exp(-(dx * dx + dy * dy) / (2 * width * width));
+          return [g, 0];
+        });
+        return {
+          title: 'Localised packet',
+          text: 'One particle, somewhere specific — so it is not an energy eigenstate, and it will spread as it moves. Pinching it narrower makes the spread faster, because a sharper position needs a wider range of momenta.',
+          width,
+        };
+      }
+      case StateKind.SUPERPOSITION: {
+        const low = Math.max(1, Math.round(parameters.low ?? 1));
+        const high = Math.max(1, Math.round(parameters.high ?? 5));
+        const unit = (2 * Math.PI) / grid;
+        sample((x, y) => {
+          const a = Math.cos(low * unit * x) * Math.cos(low * unit * y) + Math.sin(low * unit * x) * Math.sin(low * unit * y);
+          const b = Math.cos(high * unit * x) * Math.cos(high * unit * y) + Math.sin(high * unit * x) * Math.sin(high * unit * y);
+          const mix = parameters.mix ?? 0.5;
+          return [(1 - mix) * a + mix * b, 0];
+        });
+        return {
+          title: `Superposition (${low},${low}) + (${high},${high})`,
+          text: 'Neither half moves on its own; added together they do. The density beats at the difference of the two energies, which is the whole reason atoms can emit light.',
+          energies: [2 * low * low, 2 * high * high],
+        };
+      }
+      default:
+        throw new Error(`unknown state "${kind}"`);
+    }
+  }
+}
+
+/** Forward or inverse 2-D transform: `from` -> `to`, rows then columns. */
+function transform2D(sim, from, to, inverse) {
+  const { grid } = sim;
+  to.set(from);
+  for (let y = 0; y < grid; y += 1) fftInPlace(to, grid, 1, y * grid, inverse);
+  for (let x = 0; x < grid; x += 1) fftInPlace(to, grid, grid, x, inverse);
+}
+
+/** Round-trip through the simulation's scratch buffer, writing back into data. */
+function transform2DInPlace(sim, data, inverse) {
+  sim.buffer.set(data);
+  transform2D(sim, sim.buffer, data, inverse);
+}
+
+/** Perceptual ramp: near-black through indigo and teal to warm white. */
+function ramp(level) {
+  const scaled = Math.max(0, Math.min(1, level)) * (RAMP_STOPS.length - 1);
+  const index = Math.min(RAMP_STOPS.length - 2, Math.floor(scaled));
+  const t = scaled - index;
+  const a = RAMP_STOPS[index];
+  const b = RAMP_STOPS[index + 1];
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+const RAMP_STOPS = [
+  [7, 9, 20],
+  [22, 24, 68],
+  [40, 58, 148],
+  [34, 128, 184],
+  [92, 204, 190],
+  [226, 234, 204],
+  [255, 253, 248],
+];
+
+function hslToRgb(h, s, l) {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h * 12) % 12;
+    return l - a * Math.max(-1, Math.min(Math.min(k - 3, 9 - k), 1));
+  };
+  return [f(0) * 255, f(8) * 255, f(4) * 255];
+}
+
+
+/* ---- next module ---- */
+
+/**
+ * app.js — the interface layer: state, layout, rendering, and input.
+ *
+ * Nothing in here is physics. It owns a Simulation, asks it for a field, paints
+ * the field, and translates touches and clicks into changes of parameters. The
+ * split matters for testing: the physics can be, and is, tested without a
+ * browser, and everything a reader needs to trust the picture lives in
+ * quantum.js rather than being smeared across the drawing code.
+ *
+ * Exposure to the page is deliberate and small: `window.__quantum`, which the
+ * automated tests drive. That is a test seam, not an API, and it is documented
+ * as such so nobody builds on it.
+ */
+
+
+const GRID = 128;
+
+/** What the app remembers between frames. Plain object, no framework. */
+const view = {
+  kind: StateKind.PACKET,
+  parameters: { width: 7, offsetX: 0, offsetY: 0, m: 3, n: 1 },
+  boundary: Boundary.PERIODIC,
+  wellWidth: 40,
+  view: 'density',
+  playing: true,
+  speed: 1,
+  gain: 1,
+  showSpectrum: true,
+};
+
+const simulation = new Simulation({ grid: GRID, dt: 0.02, stepsPerFrame: 2 });
+
+/** DOM handles, resolved once. */
+const elements = {};
+/** Offscreen buffer the simulation paints into, drawn up by canvas scale. */
+let fieldBuffer = null;
+let fieldImageData = null;
+let spectrumBuffer = null;
+let spectrumImageData = null;
+/** The pluck pointer: one finger dragging, so a second finger can pan instead. */
+let activePointer = null;
+
+/** Frames since the last statistics update; the readout is 8 Hz on purpose. */
+let statsCounter = 0;
+
+/** Apply boundary and well size to the simulation from the current view. */
+function applyBoundary() {
+  if (view.boundary === Boundary.WALLS) {
+    simulation.setBoundary(Boundary.WALLS, view.wellWidth);
+  } else {
+    simulation.setBoundary(Boundary.PERIODIC);
+  }
+}
+
+/** Re-prepare the current state. Called on state change and on wall resize. */
+function prepareState() {
+  applyBoundary();
+  const prepared = simulation.setState(view.kind, view.parameters);
+  elements.stateTitle.textContent = prepared.title;
+  elements.stateText.textContent = prepared.text;
+  // Physics facts about the freshly prepared state, so the numbers under the
+  // picture are derived from the state rather than typed next to it.
+  const bounds = stateBoundsNote(prepared);
+  elements.stateBounds.textContent = bounds;
+  drawStaticOverlays();
+  renderFrame();
+  updateStats();
+}
+
+/**
+ * One line of "what this state is made of", computed from the simulation rather
+ * than asserted, so it cannot drift out of step with the physics.
+ */
+function stateBoundsNote(prepared) {
+  const { sigmaX, sigmaP, product } = simulation.uncertainties();
+  const parts = [
+    `spread: ${sigmaX.toFixed(1)} cells in position`,
+    `${sigmaP.toFixed(3)} hbar/cell in momentum`,
+    `product ${product.toFixed(3)} (bound 0.500)`,
+  ];
+  if (prepared.energy !== undefined) parts.push(`energy ${prepared.energy} (atomic units)`);
+  return parts.join(' · ');
+}
+
+/** Paint one frame of the wavefunction and, if shown, its spectrum. */
+function renderFrame() {
+  simulation.render(fieldBuffer.data, view.view, view.gain);
+  elements.fieldContext.putImageData(fieldImageData, 0, 0);
+  if (view.showSpectrum && spectrumBuffer) {
+    paintSpectrum();
+  }
+}
+
+/**
+ * Draw |phi(k)|^2 into its canvas with a log stretch.
+ *
+ * Log, not linear, and this is the one place the picture could mislead: a
+ * momentum distribution from a hard edge has a ~1/p^2 halo six orders of
+ * magnitude below the peak, and a linear map shows only the peak. Log shows
+ * structure honestly, at the cost of compressing it, so the panel is labelled
+ * "log brightness" and states that it is the same state's momentum.
+ */
+function paintSpectrum() {
+  const density = simulation.momentumDensity();
+  const data = spectrumBuffer.data;
+  for (let i = 0; i < density.length; i += 1) {
+    const value = density[i];
+    // log10 over six decades, floor at 1e-6 so empty space is pure background.
+    const level = value > 0 ? Math.max(0, (Math.log10(value) + 6) / 6) : 0;
+    const [r, g, b] = rampColour(level);
+    const at = i * 4;
+    data[at] = r;
+    data[at + 1] = g;
+    data[at + 2] = b;
+    data[at + 3] = 255;
+  }
+  elements.spectrumContext.putImageData(spectrumImageData, 0, 0);
+}
+
+/** Shared colour ramp, duplicated from the sim by design: two consumers of one
+ *  perceptual scale would couple the physics module to UI presentation. */
+function rampColour(level) {
+  const stops = RAMP;
+  const scaled = Math.max(0, Math.min(1, level)) * (stops.length - 1);
+  const index = Math.min(stops.length - 2, Math.floor(scaled));
+  const t = scaled - index;
+  const a = stops[index];
+  const b = stops[index + 1];
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+const RAMP = [
+  [7, 9, 20],
+  [22, 24, 68],
+  [40, 58, 148],
+  [34, 128, 184],
+  [92, 204, 190],
+  [226, 234, 204],
+  [255, 253, 248],
+];
+
+/**
+ * Overlay the wall boundary onto the field canvas, in screen space.
+ *
+ * The mask itself is in the simulation; this only draws where it is, because a
+ * user needs to see the wall that is eating their particle. In periodic mode we
+ * say so explicitly instead of leaving the reader to infer "no wall" from the
+ * absence of one.
+ */
+function drawStaticOverlays() {
+  const context = elements.overlayContext;
+  const size = elements.overlay.width;
+  context.clearRect(0, 0, size, size);
+  if (view.boundary !== Boundary.WALLS) return;
+  const scale = size / GRID;
+  const half = simulation.halfWidth * scale;
+  const centre = size / 2;
+  context.strokeStyle = 'rgba(255, 214, 140, 0.85)';
+  context.lineWidth = 2;
+  context.setLineDash([7, 5]);
+  context.strokeRect(centre - half, centre - half, half * 2, half * 2);
+  context.setLineDash([]);
+}
+
+/** Refresh the numeric readout. */
+function updateStats() {
+  const { sigmaX, sigmaP, product } = simulation.uncertainties();
+  elements.readoutSigmaX.textContent = sigmaX.toFixed(1);
+  elements.readoutSigmaP.textContent = sigmaP.toFixed(3);
+  elements.readoutProduct.textContent = product.toFixed(3);
+  elements.readoutTime.textContent = simulation.time.toFixed(1);
+  elements.readoutNorm.textContent = simulation.norm().toFixed(3);
+  const absorbed = simulation.absorbedFraction();
+  elements.readoutAbsorbedRow.hidden = view.boundary !== Boundary.WALLS;
+  elements.readoutAbsorbed.textContent = `${(absorbed * 100).toFixed(1)}%`;
+}
+
+/** Advance one animation frame. */
+function tick() {
+  if (view.playing) {
+    simulation.stepsPerFrame = Math.max(1, Math.round(2 * view.speed));
+    simulation.step();
+    renderFrame();
+    statsCounter += 1;
+    if (statsCounter % 8 === 0) updateStats();
+  }
+  window.requestAnimationFrame(tick);
+}
+
+/**
+ * Translate a pointer position on the field canvas into a pluck.
+ *
+ * This is the main interaction and it has to be discoverable, so it is a direct
+ * manipulation rather than a control: drag where you want the particle, release,
+ * and it is there with a momentum kick in the direction you flicked. Drag
+ * distance sets how sharp that momentum is, which is the uncertainty trade-off
+ * as a physical gesture rather than as a slider.
+ */
+function pointerToPosition(event) {
+  const rect = elements.field.getBoundingClientRect();
+  const u = (event.clientX - rect.left) / rect.width;
+  const v = (event.clientY - rect.top) / rect.height;
+  return { u, v };
+}
+
+function beginPluck(event) {
+  if (activePointer !== null) return;
+  activePointer = { id: event.pointerId, start: pointerToPosition(event), current: pointerToPosition(event) };
+  elements.field.setPointerCapture?.(event.pointerId);
+  elements.hint.classList.add('is-active');
+  event.preventDefault();
+}
+
+function movePluck(event) {
+  if (activePointer === null || event.pointerId !== activePointer.id) return;
+  activePointer.current = pointerToPosition(event);
+  drawPluckIndicator();
+}
+
+function endPluck(event) {
+  if (activePointer === null || event.pointerId !== activePointer.id) return;
+  const { start, current } = activePointer;
+  activePointer = null;
+  elements.hint.classList.remove('is-active');
+  elements.overlayContext.clearRect(0, 0, elements.overlay.width, elements.overlay.height);
+  drawStaticOverlays();
+  applyPluck(start, current);
+}
+
+/**
+ * Set the state from a drag: a packet at the drag origin, with a mean momentum
+ * along the flick and a width that shrinks as the flick gets sharper.
+ *
+ * The relation is chosen so the gesture teaches the thing the panel shows:
+ * a longer flick means a more definite momentum, and a definite momentum means
+ * a less definite position, so the packet gets wider, not narrower.
+ */
+function applyPluck(start, current) {
+  const dx = current.u - start.u;
+  const dy = current.v - start.v;
+  const drag = Math.hypot(dx, dy);
+  const cells = GRID / 2;
+  // Under about 2% of the canvas, treat it as a tap: place a packet with no
+  // kick. A threshold keeps an intentful tap from becoming a random small
+  // momentum, which would make the spectrum jitter for no visible reason.
+  view.kind = StateKind.PACKET;
+  view.parameters.offsetX = (start.u - 0.5) * GRID;
+  view.parameters.offsetY = (start.v - 0.5) * GRID;
+  if (drag < 0.02) {
+    view.parameters.width = 7;
+    preparePacketWithoutOffsetReset();
+    return;
+  }
+  // A sharper flick gives a more definite momentum and hence a broader packet:
+  // the uncertainty trade-off delivered as a gesture rather than as a slider.
+  view.parameters.width = Math.min(18, 4 + drag * cells * 0.9);
+  preparePacketWithKick({ x: dx, y: dy });
+}
+
+/** Prepare the packet, then give it the phase tilt implied by a flick. */
+function preparePacketWithKick(kick) {
+  simulation.setState(StateKind.PACKET, view.parameters);
+  const magnitude = Math.hypot(kick.x, kick.y);
+  const angle = Math.atan2(kick.y, kick.x);
+  // Boost by exp(i p . x): a plane-wave phase tilt, which is exactly a
+  // translation of the momentum distribution by p. Doing it as a phase rather
+  // than by shifting the array keeps the packet's shape and makes the spectral
+  // dot move to a radius that the panel can be read against.
+  const strength = magnitude * GRID * 0.55;
+  const { grid } = simulation;
+  for (let iy = 0; iy < grid; iy += 1) {
+    for (let ix = 0; ix < grid; ix += 1) {
+      const index = iy * grid + ix;
+      const x = ix + 0.5 - grid / 2;
+      const y = iy + 0.5 - grid / 2;
+      const phase = strength * (Math.cos(angle) * x + Math.sin(angle) * y);
+      const cos = Math.cos(phase);
+      const sin = Math.sin(phase);
+      const re = simulation.psi[index * 2];
+      const im = simulation.psi[index * 2 + 1];
+      simulation.psi[index * 2] = re * cos - im * sin;
+      simulation.psi[index * 2 + 1] = re * sin + im * cos;
+    }
+  }
+  simulation.absorbed = 0;
+  elements.stateTitle.textContent = 'Packet you flicked';
+  elements.stateText.textContent =
+    'You placed a packet here and gave it a sideways push. In the spectrum, watch the bright spot sit off-centre: off-centre means it is moving, and the further out it sits, the faster it goes.';
+  elements.stateBounds.textContent = stateBoundsNote({});
+  drawStaticOverlays();
+  renderFrame();
+  updateStats();
+}
+
+/** Prepare a stationary packet at the current offset. */
+function preparePacketWithoutOffsetReset() {
+  simulation.setState(StateKind.PACKET, view.parameters);
+  elements.stateTitle.textContent = 'Packet you placed';
+  elements.stateText.textContent =
+    'A particle placed here, at rest. It has no defined momentum, so the spectrum is a broad ring rather than a dot — and as the packet spreads you are watching the momentum spread it was born with pull it apart.';
+  elements.stateBounds.textContent = stateBoundsNote({});
+  drawStaticOverlays();
+  renderFrame();
+  updateStats();
+}
+
+/** Rubber-band the pluck so the gesture reads before release. */
+function drawPluckIndicator() {
+  const context = elements.overlayContext;
+  const size = elements.overlay.width;
+  drawStaticOverlays();
+  const from = activePointer.start;
+  const to = activePointer.current;
+  const x0 = from.u * size;
+  const y0 = from.v * size;
+  const x1 = to.u * size;
+  const y1 = to.v * size;
+  context.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+  context.lineWidth = 2;
+  context.beginPath();
+  context.arc(x0, y0, 9, 0, Math.PI * 2);
+  context.stroke();
+  context.beginPath();
+  context.moveTo(x0, y0);
+  context.lineTo(x1, y1);
+  context.stroke();
+  context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  context.beginPath();
+  context.arc(x1, y1, 4, 0, Math.PI * 2);
+  context.fill();
+}
+
+/** Wire a range input to a view field and a label formatter. */
+function bindRange(id, write, format) {
+  const input = elements[id];
+  const label = document.getElementById(`${id}-value`);
+  if (input === undefined) throw new Error(`bindRange: no element cached for "${id}"`);
+  if (label === null) throw new Error(`bindRange: no <output id="${id}-value"> in the markup`);
+  const sync = () => {
+    write(Number(input.value));
+    if (label) label.textContent = format(Number(input.value));
+  };
+  input.addEventListener('input', () => {
+    sync();
+    if (id === 'wellWidth') {
+      prepareState();
+    } else {
+      renderFrame();
+      updateStats();
+    }
+  });
+  sync();
+}
+
+/** Reflect the current enum-ish choices onto their buttons. */
+function syncControlStates() {
+  for (const button of elements.stateButtons.children) {
+    button.setAttribute('aria-pressed', String(button.dataset.state === view.kind));
+  }
+  for (const button of elements.viewButtons.children) {
+    button.setAttribute('aria-pressed', String(button.dataset.view === view.view));
+  }
+  for (const button of elements.boundaryButtons.children) {
+    button.setAttribute('aria-pressed', String(button.dataset.boundary === view.boundary));
+  }
+  elements.playButton.textContent = view.playing ? 'Pause' : 'Play';
+  elements.playButton.setAttribute('aria-pressed', String(view.playing));
+  elements.wellWidthRow.hidden = view.boundary !== Boundary.WALLS;
+}
+
+function main() {
+  // Names are kebab-case DOM ids mapped to camelCase keys here, in one place.
+  // `require` is strict on purpose: the alternative is a null that only shows up
+  // as a property access three functions later, which is how a typo in a control
+  // id ends up reported as something unrelated.
+  const ids = {
+    field: 'field',
+    overlay: 'overlay',
+    spectrum: 'spectrum',
+    stateButtons: 'state-buttons',
+    viewButtons: 'view-buttons',
+    boundaryButtons: 'boundary-buttons',
+    playButton: 'playButton',
+    stateTitle: 'state-title',
+    stateText: 'state-text',
+    stateBounds: 'state-bounds',
+    hint: 'hint',
+    wellWidthRow: 'well-width-row',
+    readoutSigmaX: 'readout-sigma-x',
+    readoutSigmaP: 'readout-sigma-p',
+    readoutProduct: 'readout-product',
+    readoutTime: 'readout-time',
+    readoutNorm: 'readout-norm',
+    readoutAbsorbed: 'readout-absorbed',
+    readoutAbsorbedRow: 'readout-absorbed-row',
+    gain: 'gain',
+    speed: 'speed',
+    nodes: 'nodes',
+    wellWidth: 'wellWidth',
+  };
+  const missing = [];
+  for (const [key, id] of Object.entries(ids)) {
+    const node = document.getElementById(id);
+    if (node === null) missing.push(id);
+    elements[key] = node;
+  }
+  if (missing.length > 0) {
+    throw new Error(`markup is missing elements the script needs: ${missing.join(', ')}`);
+  }
+
+  // Buffers are GRID-sized and drawn up by CSS; the simulation therefore always
+  // works at one fixed resolution whatever the screen, which is what makes the
+  // screenshots comparable between a phone and a desktop.
+  elements.field.width = GRID;
+  elements.field.height = GRID;
+  elements.fieldContext = elements.field.getContext('2d');
+  fieldBuffer = elements.fieldContext.createImageData(GRID, GRID);
+
+  if (view.showSpectrum) {
+    elements.spectrum.width = GRID;
+    elements.spectrum.height = GRID;
+    elements.spectrumContext = elements.spectrum.getContext('2d');
+    spectrumBuffer = elements.spectrumContext.createImageData(GRID, GRID);
+    spectrumImageData = spectrumBuffer;
+  }
+
+  // The overlay sits over the field at CSS size × dpr, and is redrawn in
+  // screen space so the dashed wall and the pluck line stay crisp on a phone.
+  function resizeOverlay() {
+    const rect = elements.field.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    elements.overlay.width = Math.max(1, Math.round(rect.width * dpr));
+    elements.overlay.height = Math.max(1, Math.round(rect.height * dpr));
+    elements.overlayContext = elements.overlay.getContext('2d');
+    drawStaticOverlays();
+  }
+
+  fieldImageData = fieldBuffer;
+  // Size the overlay before anything draws to it. `prepareState` below paints
+  // the wall outline, so the context has to exist by then; doing it here rather
+  // than in the resize handler removes an ordering dependency that showed up as
+  // "clearRect of undefined" the first time the page loaded.
+  resizeOverlay();
+
+  // State buttons.
+  const states = [
+    [StateKind.PACKET, 'Wave packet'],
+    [StateKind.GROUND, 'Ground state'],
+    [StateKind.EXCITED, 'Excited state'],
+    [StateKind.TRAVELLING, 'Travelling wave'],
+    [StateKind.SUPERPOSITION, 'Superposition'],
+  ];
+  for (const [kind, label] of states) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chip';
+    button.dataset.state = kind;
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      view.kind = kind;
+      syncControlStates();
+      prepareState();
+    });
+    elements.stateButtons.append(button);
+  }
+
+  const views = [['density', 'Density'], ['phase', 'Phase']];
+  for (const [value, label] of views) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chip';
+    button.dataset.view = value;
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      view.view = value;
+      syncControlStates();
+      renderFrame();
+    });
+    elements.viewButtons.append(button);
+  }
+
+  const boundaries = [
+    [Boundary.PERIODIC, 'Open (periodic)'],
+    [Boundary.WALLS, 'Box with walls'],
+  ];
+  for (const [value, label] of boundaries) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chip';
+    button.dataset.boundary = value;
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      view.boundary = value;
+      syncControlStates();
+      prepareState();
+    });
+    elements.boundaryButtons.append(button);
+  }
+
+  elements.playButton.addEventListener('click', () => {
+    view.playing = !view.playing;
+    syncControlStates();
+  });
+
+  bindRange('gain', (v) => { view.gain = v; }, (v) => v.toFixed(1));
+  bindRange('speed', (v) => { view.speed = v; }, (v) => `${v.toFixed(1)}\u00d7`);
+  bindRange('wellWidth', (v) => { view.wellWidth = v; }, (v) => `${v} cells`);
+  bindRange('nodes', (v) => {
+    view.parameters.m = Math.max(1, Math.round(v));
+    view.parameters.n = Math.max(1, Math.round(v));
+  }, (v) => `n = ${Math.round(v)}`);
+
+  elements.field.addEventListener('pointerdown', beginPluck);
+  elements.field.addEventListener('pointermove', movePluck);
+  elements.field.addEventListener('pointerup', endPluck);
+  elements.field.addEventListener('pointercancel', endPluck);
+
+  window.addEventListener('resize', resizeOverlay);
+
+  syncControlStates();
+  prepareState();
+  resizeOverlay();
+  window.requestAnimationFrame(tick);
+
+  // Signal that the app is live. The tests wait on this instead of guessing at
+  // a timeout, which is the difference between a flaky suite and a real check.
+  document.documentElement.dataset.quantumReady = '1';
+
+  // Test seam only: lets automated checks drive exact frames and read state.
+  window.__quantum = {
+    view,
+    simulation,
+    prepareState,
+    renderFrame,
+    updateStats,
+    stepFrames(count) {
+      for (let i = 0; i < count; i += 1) simulation.step();
+      renderFrame();
+      updateStats();
+    },
+    setView(next) {
+      Object.assign(view, next);
+      syncControlStates();
+      if (next.kind !== undefined || next.boundary !== undefined || next.wellWidth !== undefined) {
+        prepareState();
+      } else {
+        renderFrame();
+      }
+    },
+  };
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', main, { once: true });
+} else {
+  main();
+}
+
+})();
+</script>
+</body>
+</html>

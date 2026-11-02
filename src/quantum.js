@@ -169,9 +169,13 @@ export class Simulation {
    * @param {number} [options.stepsPerFrame] Substeps per rendered frame.
    * @param {string} [options.boundary]      Boundary enum.
    */
-  constructor({ grid, dt = 0.02, stepsPerFrame = 2, boundary = Boundary.PERIODIC }) {
+  constructor({ grid, dt = 0.2, stepsPerFrame = 1, boundary = Boundary.PERIODIC }) {
     if ((grid & (grid - 1)) !== 0) throw new Error(`grid must be a power of two, got ${grid}`);
     this.grid = grid;
+    // dt is a display-timescale choice, not a stability one: the spectral
+    // propagator is exact for any dt, so 0.2 rather than a textbook 0.02 makes a
+    // packet visibly spread in a few seconds instead of a minute. The analytic
+    // spreading law is asserted to hold at this dt in the physics tests.
     this.dt = dt;
     this.stepsPerFrame = stepsPerFrame;
     this.boundary = boundary;
@@ -274,9 +278,8 @@ export class Simulation {
   }
 
   /**
-   * Total probability absorbed by the wall since the state was prepared, as a
-   * fraction of the original norm. Same units as `norm()`, by construction —
-   * see `project`.
+   * Total probability absorbed by the wall since the state was prepared. Same
+   * units as `norm()`, by construction — see `project`.
    */
   absorbedFraction() {
     return this.absorbed;
@@ -314,14 +317,22 @@ export class Simulation {
       const before = psi[at] * psi[at] + psi[at + 1] * psi[at + 1];
       psi[at] *= a;
       psi[at + 1] *= a;
-      // Accumulate in the same units as norm() — probability per cell, not
-      // summed over cells — so a caller never has to divide by the cell count
-      // and get it wrong by a factor of 4096.
-      this.absorbed += (before - (psi[at] * psi[at] + psi[at + 1] * psi[at + 1])) / (grid * grid);
+      // Same units as norm(): probability, summed over cells.
+      this.absorbed += before - (psi[at] * psi[at] + psi[at + 1] * psi[at + 1]);
     }
   }
 
-  /** Total probability, summing |psi|^2 over cells. */
+  /**
+   * Total probability: the sum of |psi|^2 over all cells.
+   *
+   * Normalised so that a correctly prepared state gives exactly 1 and |psi|^2 is
+   * a probability *per cell* rather than a probability density per unit area.
+   * That choice is what makes the picture readable: with the continuous
+   * convention the peak of a narrow packet scales like 1 / width^2 and differs
+   * from a spread-out state by two orders of magnitude, so no single exposure
+   * can show both. Here peak brightness varies far less between states, and the
+   * exposure below adapts to what is left.
+   */
   norm() {
     const { psi, grid } = this;
     let sum = 0;
@@ -330,16 +341,39 @@ export class Simulation {
       const im = psi[i * COMPLEX + 1];
       sum += re * re + im * im;
     }
-    return sum / (grid * grid);
+    return sum;
   }
 
-  /** Rescale psi to unit total probability. Returns the factor applied. */
+  /** Rescale psi so the sum over cells is 1. Returns the factor applied. */
   normalize() {
     const n = this.norm();
     if (!(n > 0)) return 0;
     const scale = 1 / Math.sqrt(n);
     for (let i = 0; i < this.psi.length; i += 1) this.psi[i] *= scale;
     return scale;
+  }
+
+  /**
+   * Peak |psi|^2, used to auto-expose the density view.
+   *
+   * Auto-exposure is a deliberate trade. A fixed exposure is easier to compare
+   * between screenshots but leaves either a bright packet blown to uniform
+   * white or a delocalised eigenstate too dim to read — with peak-to-mean ratios
+   * from 2 to over 100 across the states on offer, both failures happen with any
+   * single constant. Adapting per state makes every state legible; the cost is
+   * that brightness cannot be compared across states, so the UI says the value
+   * it used, and the Brightness control multiplies it for direct comparison.
+   */
+  peakDensity() {
+    const { psi, grid } = this;
+    let peak = 0;
+    for (let i = 0; i < grid * grid; i += 1) {
+      const re = psi[i * COMPLEX];
+      const im = psi[i * COMPLEX + 1];
+      const v = re * re + im * im;
+      if (v > peak) peak = v;
+    }
+    return peak;
   }
 
   /**
@@ -359,22 +393,29 @@ export class Simulation {
    */
   render(target, view, gain) {
     const { psi, grid } = this;
+    // Scale so the brightest cell lands at 1 before tone mapping. `gain` then
+    // means "exposure relative to the state's own brightest point", which keeps
+    // the interference fringes — the point of the picture — out of the clipped
+    // white end of the ramp for every state the app can prepare.
+    const peak = this.peakDensity();
+    const scale = peak > 0 ? gain / peak : 0;
     for (let i = 0; i < grid * grid; i += 1) {
       const re = psi[i * COMPLEX];
       const im = psi[i * COMPLEX + 1];
       const at = i * 4;
       if (view === 'phase') {
         const hue = (Math.atan2(im, re) / (2 * Math.PI) + 0.5) % 1;
-        const level = Math.min(1, Math.sqrt(re * re + im * im) * gain * 6);
+        const amplitude = Math.sqrt(peak);
+        const level = amplitude > 0 ? Math.min(1, (Math.sqrt(re * re + im * im) / amplitude) * gain) : 0;
         const [r, g, b] = hslToRgb(hue, 0.72, 0.08 + 0.62 * level);
         target[at] = r;
         target[at + 1] = g;
         target[at + 2] = b;
       } else {
-        // Exponential tone mapping: density spans orders of magnitude, and a
-        // linear ramp buries the interference fringes that are the whole point.
-        const rho = (re * re + im * im) * gain;
-        const [r, g, b] = ramp(1 - Math.exp(-rho * 1.5));
+        // Gamma rather than a hard knee: preserves contrast in the fringes while
+        // keeping the peak inside the ramp.
+        const rho = (re * re + im * im) * scale;
+        const [r, g, b] = ramp(rho > 0 ? Math.pow(rho, 0.6) : 0);
         target[at] = r;
         target[at + 1] = g;
         target[at + 2] = b;

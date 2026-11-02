@@ -1,0 +1,264 @@
+/*
+ * Layout and appearance.
+ *
+ * Two shapes, chosen by aspect ratio rather than by "is it a phone", because the
+ * thing that actually matters is whether there is room beside the picture or
+ * only room below it:
+ *   - wide:  the field on the left, controls and spectrum on the right.
+ *   - tall:  the field on top, everything else scrolling underneath.
+ * A landscape phone is the wide case with a short viewport, so controls must
+ * scroll horizontally rather than push the picture off screen; that is what the
+ * control rail is for.
+ *
+ * No web fonts, and no font-family that has to be downloaded: the sandbox this
+ * is verified in has no font packages, and relying on one would make the layout
+ * in a golden screenshot mean something different from the layout on a phone.
+ * The stack is the platform's own UI font, falling back to a generic sans.
+ */
+
+:root {
+  --bg: #06070f;
+  --bg-panel: #0e1120;
+  --bg-raised: #171b30;
+  --line: #2a2f4d;
+  --text: #eef1fb;
+  --text-dim: #9aa3c4;
+  --accent: #6ee7d8;
+  --accent-warm: #ffd68c;
+  --radius: 14px;
+  --gap: 14px;
+  --touch: 44px;
+}
+
+* { box-sizing: border-box; }
+
+/*
+ * The `hidden` attribute is implemented by the UA as `display: none`, which any
+ * author `display` beats — so a `display: flex` rule on .control-group silently
+ * un-hides a control group marked hidden, and the wall slider showed up in
+ * periodic mode while the JS correctly reported it hidden. This one rule makes
+ * the attribute mean what the markup says regardless of what layout follows.
+ */
+[hidden] { display: none !important; }
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  overscroll-behavior-y: none;
+}
+
+/* --- shell ------------------------------------------------------------ */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap);
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.masthead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+
+.masthead h1 {
+  margin: 0;
+  font-size: clamp(1.25rem, 1.05rem + 1.1vw, 1.75rem);
+  letter-spacing: -0.01em;
+}
+
+.masthead .subtitle { margin: 0; color: var(--text-dim); font-size: 0.9rem; }
+
+/* --- layout ----------------------------------------------------------- */
+
+.stage { display: grid; gap: var(--gap); align-items: start; }
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--gap);
+}
+
+.field-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Touch: without this, dragging on the field is read by the browser as a
+     page scroll and the pluck gesture never reaches us. */
+  touch-action: none;
+}
+
+.field-stack {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #04050c;
+  border: 1px solid var(--line);
+}
+
+.field-stack canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* The field canvas is upscaled from 128^2. Smooth scaling is what makes a
+   coarse simulation look like a continuous wavefield instead of a mosaic. */
+#field { image-rendering: auto; }
+
+#overlay { pointer-events: none; }
+
+/* --- explainer copy ---------------------------------------------------- */
+
+.lede { margin: 0; color: var(--text-dim); font-size: 0.92rem; }
+.lede strong { color: var(--text); font-weight: 600; }
+
+.state-title { margin: 0 0 4px; font-size: 1.02rem; }
+.state-text { margin: 0 0 6px; font-size: 0.9rem; }
+.state-bounds { margin: 0; color: var(--text-dim); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+
+/* The invitation to touch. Visible until first use, then it gets out of the
+   way; a hint that never leaves becomes wallpaper. */
+.hint {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border-radius: 999px;
+  background: rgba(110, 231, 216, 0.14);
+  border: 1px solid rgba(110, 231, 216, 0.4);
+  color: var(--accent);
+  font-size: 0.88rem;
+  font-weight: 550;
+  transition: opacity 0.35s ease;
+}
+
+.hint.is-active { opacity: 0.45; }
+
+.hint::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
+
+/* --- controls ---------------------------------------------------------- */
+
+.controls { display: flex; flex-direction: column; gap: 12px; }
+
+.control-group { display: flex; flex-direction: column; gap: 7px; }
+
+.control-label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+/* Chips are the primary way to change state, so they meet the 44px touch
+   minimum and wrap instead of scrolling: a control you have to scroll to find
+   is a control nobody uses. */
+.chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+
+.chip {
+  min-height: var(--touch);
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.chip:hover { border-color: var(--accent); }
+
+.chip[aria-pressed="true"] {
+  background: rgba(110, 231, 216, 0.2);
+  border-color: var(--accent);
+  color: #ecfffb;
+}
+
+.chip:focus-visible, .play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.slider-row { display: flex; align-items: center; gap: 10px; }
+
+.slider-row input[type="range"] { flex: 1; height: var(--touch); accent-color: var(--accent); }
+
+.slider-value {
+  min-width: 5.5em;
+  text-align: right;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.play {
+  min-height: var(--touch);
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: rgba(110, 231, 216, 0.16);
+  color: #ecfffb;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* --- readout ----------------------------------------------------------- */
+
+.readout { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 0.85rem; }
+
+.readout dt { color: var(--text-dim); }
+
+.readout dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.note { margin: 8px 0 0; font-size: 0.8rem; color: var(--text-dim); }
+
+.spectrum-frame { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #04050c; }
+.spectrum-frame canvas { width: 100%; aspect-ratio: 1; display: block; }
+
+.spectrum-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 9px;
+  font-size: 0.74rem;
+  background: rgba(4, 5, 12, 0.78);
+  color: var(--text-dim);
+}
+
+footer { color: var(--text-dim); font-size: 0.8rem; }
+footer p { margin: 0 0 6px; }
+
+/* --- wide: field left, everything else right -------------------------- */
+
+@media (min-aspect-ratio: 11/10) and (min-width: 780px) {
+  .stage { grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); }
+  .field-panel { position: sticky; top: var(--gap); }
+  /* On a short landscape phone the sticky field must not push controls off the
+     viewport, so cap it against the viewport height and let the column scroll. */
+  .field-stack { max-height: calc(100vh - 2.5 * var(--gap)); width: auto; aspect-ratio: 1; }
+  .side { display: flex; flex-direction: column; gap: var(--gap); }
+}
+
+@media (max-width: 779px) {
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  /* Portrait: the field is the hero and stays near square, but must not fill
+     the whole screen — the invitation to touch has to be visible with it. */
+  .field-stack { max-height: 52vh; width: auto; margin: 0 auto; }
+  body { font-size: 16px; }
+}
