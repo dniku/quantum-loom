@@ -46,14 +46,14 @@
           src = ./.;
           nativeBuildInputs = [ pkgs.nodejs_22 ];
         } ''
-          cd "$src"
-          node tools/build.mjs
-          test -s index.html
+          # Build into $out rather than running in $src: a Nix source tree is a
+          # read-only store path, so writing the artifact beside the sources
+          # fails with EACCES. tools/build.mjs takes the output path for this.
+          node "$src/tools/build.mjs" "$out/index.html"
+          test -s "$out/index.html"
           # The artifact must be self-contained: no external asset references.
-          ! grep -qE '<(script|link|img)[^>]+(src|href)="[^#]' index.html \
+          ! grep -qE '<(script|link|img)[^>]+(src|href)="[^#]' "$out/index.html" \
             || { echo "artifact references an external file"; exit 1; }
-          mkdir -p "$out"
-          cp index.html "$out/index.html"
         '';
       });
     };
