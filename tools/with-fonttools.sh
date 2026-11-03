@@ -8,72 +8,102 @@
 # deliberate act, because a font change moves every glyph and therefore every
 # full-page golden screenshot.
 #
-# Two ways to reach the same pinned packages:
+# Two ways to reach the same pinned packages, tried in order:
 #
-#   1. `nix build` / `nix shell`, when a Nix daemon or socket is reachable.
-#      This is the normal path on a developer machine and on CI.
-#   2. Absolute /nix/store paths, when it is not. The sandbox this project is
-#      verified in has no daemon socket, so the fallback is what actually runs
-#      here. Both paths name the same nixpkgs revision, and the script prints
-#      which it used plus the store paths, so a regenerated face can always be
-#      traced back to the package that produced it.
+#   1. Resolve the outputs with `nix build`, when a Nix daemon is reachable.
+#      This records which nixpkgs revision produced the faces.
+#   2. Absolute /nix/store paths, when a daemon is not reachable.
+#
+# Both paths then run the generator the same way, with PATH and PYTHONPATH set
+# to the resolved store outputs, rather than handing the work to `nix shell`.
+# That is deliberate: `nix shell` puts the packages' binaries on PATH but does
+# not merge their Python site-packages into the interpreter that runs
+# pyftsubset, so fonttools could not import brotli and silently wrote nothing.
+# Deriving the environment from the same out paths the fonts came from keeps the
+# two paths doing genuinely the same thing, which is the property that matters
+# here -- a fallback that differs from the path CI exercises is how a generator
+# ends up untested.
 #
 # Note the difference from the sibling Aurelia project, which shells out to
-# `woff2_compress` from pkgs.woff2: those binaries cannot be exec'd in this
-# sandbox, and fonttools writes WOFF2 on its own given a brotli module built
-# for the same interpreter. See the header of tools/build-font.mjs.
+# `woff2_compress` from pkgs.woff2: those binaries cannot be exec'd in the
+# sandbox this project is verified in, and fonttools writes WOFF2 on its own
+# given a brotli module on the import path. See the header of
+# tools/build-font.mjs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-FONT_PKG="pkgs.dejavu_fonts"
-# DejaVuSans.ttf lives in a subdirectory, and an interpolated "${out}/subdir"
-# string carries a derivation context that nix rejects; the subdirectory is
-# therefore appended in bash, not inside the nix expression.
-FONT_SUBDIR="share/fonts/truetype"
-
-# Fallback store paths, resolved with:
+# Pinned store paths, from the versions flake.lock resolves: dejavu-fonts-2.37,
+# python3.14-fonttools-4.63.0, python3.14-brotli-1.2.0. Refresh them with:
 #   nix build --no-link --print-out-paths '<nixpkgs>' -A dejavu_fonts
-# and read off this machine's store otherwise. Pinned to the same versions
-# flake.lock resolves: dejavu-fonts-2.37, fonttools-4.63.0, brotli-1.2.0.
+# and the equivalent for the two Python packages.
+FONT_SUBDIR="share/fonts/truetype"
 FALLBACK_FONT_OUT=/nix/store/xadrivsjgk1bslbd64hq9zakin7vp6nr-dejavu-fonts-2.37
-FALLBACK_PYFTSUBSET=/nix/store/16dfzqspcbliyigq9k2ha85j2dbp633b-python3.14-fonttools-4.63.0/bin/pyftsubset
-# fonttools needs a brotli Python extension built for the *same* interpreter to
-# encode WOFF2, and does not declare it, so it is added to PYTHONPATH by hand.
-FALLBACK_BROTLI_SITE=/nix/store/f7bpjfpqhaaya02029i444lvrp70353z-python3.14-brotli-1.2.0/lib/python3.14/site-packages
+FALLBACK_FONTTOOLS_OUT=/nix/store/16dfzqspcbliyigq9k2ha85j2dbp633b-python3.14-fonttools-4.63.0
+FALLBACK_BROTLI_OUT=/nix/store/f7bpjfpqhaaya02029i444lvrp70353z-python3.14-brotli-1.2.0
 
-nix_expr_fonts() {
-  cat <<'NIX'
-let flake = builtins.getFlake (toString ./.);
-    pkgs = flake.inputs.nixpkgs.legacyPackages.${builtins.currentSystem};
-in
-NIX
+# `in` and its body must stay on separate lines, and a nix expression is passed
+# as one argument, so this is written with an explicit newline instead of
+# "$(heredoc)": command substitution strips the trailing newline and glues `in`
+# to the body as `inpkgs.foo`, which fails to parse. A previous version did
+# exactly that and reported "nix is unavailable" on a machine where nix worked
+# fine -- a false diagnosis is worse than a real one, because it sends you
+# hunting for a missing daemon.
+NIX_PREAMBLE=$'let flake = builtins.getFlake (toString ./.);\n    pkgs = flake.inputs.nixpkgs.legacyPackages.${builtins.currentSystem};\nin\n'
+
+# Resolve all three outputs, or fall back to the pinned store paths.
+resolve_with_nix() {
+  local out
+  for attr in dejavu_fonts python3Packages.fonttools python3Packages.brotli; do
+    out=$(nix build --impure --no-link --print-out-paths \
+      --expr "${NIX_PREAMBLE}pkgs.${attr}" 2>/dev/null) || return 1
+    RESOLVED+=("$out")
+  done
 }
 
-if nix build --impure --no-link --print-out-paths --expr "$(nix_expr_fonts)${FONT_PKG}" >/dev/null 2>&1; then
-  echo "== fonts: resolved from the pinned flake via nix build =="
-  FONT_OUT=$(nix build --impure --no-link --print-out-paths --expr "$(nix_expr_fonts)${FONT_PKG}")
-  # fonttools provides pyftsubset; brotli provides the encoder fonttools imports
-  # for WOFF2 output. Both from the same pinned package set and interpreter.
-  nix shell --impure --expr "$(nix_expr_fonts)[
-    pkgs.python3Packages.fonttools
-    pkgs.python3Packages.brotli
-  ]" --command bash -c 'set -euo pipefail; node tools/build-font.mjs "$1"' _ "$FONT_OUT/$FONT_SUBDIR"
+RESOLVED=()
+if command -v nix >/dev/null 2>&1 && resolve_with_nix; then
+  NIXREV=$(nix eval --impure --raw --expr \
+    "(builtins.getFlake (toString ./.)).inputs.nixpkgs.rev or \"<non-flake>\"" 2>/dev/null || echo unknown)
+  echo "== tooling resolved from the pinned flake (nixpkgs ${NIXREV}) =="
+  FONT_OUT=${RESOLVED[0]}
+  FONTTOOLS_OUT=${RESOLVED[1]}
+  BROTLI_OUT=${RESOLVED[2]}
 else
-  echo "== fonts: nix is unavailable here, using pinned store paths directly =="
-  for path in "$FALLBACK_FONT_OUT/$FONT_SUBDIR/DejaVuSans.ttf" \
-              "$FALLBACK_FONT_OUT/$FONT_SUBDIR/DejaVuSans-Bold.ttf" \
-              "$FALLBACK_PYFTSUBSET" \
-              "$FALLBACK_BROTLI_SITE/brotli.py"; do
-    if [[ ! -e $path ]]; then
-      echo "missing $path" >&2
-      echo "run this script where a Nix daemon can realise the pinned packages" >&2
-      exit 1
-    fi
-  done
-  echo "   font package:   $FALLBACK_FONT_OUT"
-  echo "   subsetter:      $FALLBACK_PYFTSUBSET"
-  echo "   brotli module:  $FALLBACK_BROTLI_SITE"
-  PATH="$(dirname "$FALLBACK_PYFTSUBSET"):$PATH" \
-  PYTHONPATH="$FALLBACK_BROTLI_SITE${PYTHONPATH:+:$PYTHONPATH}" \
-    node tools/build-font.mjs "$FALLBACK_FONT_OUT/$FONT_SUBDIR"
+  echo "== nix unavailable or the pinned expression failed; using pinned store paths ==" >&2
+  FONT_OUT=$FALLBACK_FONT_OUT
+  FONTTOOLS_OUT=$FALLBACK_FONTTOOLS_OUT
+  BROTLI_OUT=$FALLBACK_BROTLI_OUT
 fi
+
+# Both paths converge here, so every face is generated by one code path.
+PYFTSUBSET="$FONTTOOLS_OUT/bin/pyftsubset"
+# fonttools needs a brotli Python extension to encode WOFF2 and does not declare
+# it, so its site-packages go on PYTHONPATH by hand.
+BROTLI_SITE=$(printf '%s' "$BROTLI_OUT"/lib/python3.*/site-packages | cut -d' ' -f1)
+
+for path in "$FONT_OUT/$FONT_SUBDIR/DejaVuSans.ttf" \
+            "$FONT_OUT/$FONT_SUBDIR/DejaVuSans-Bold.ttf" \
+            "$PYFTSUBSET" \
+            "$BROTLI_SITE/brotli.py"; do
+  if [[ ! -e $path ]]; then
+    echo "missing $path" >&2
+    echo "refresh the pinned paths in this script, or run where nix can realise them" >&2
+    exit 1
+  fi
+done
+echo "   font package:  $FONT_OUT"
+echo "   subsetter:     $PYFTSUBSET"
+echo "   brotli module: $BROTLI_SITE"
+
+# node comes from the environment: it runs the generator, not the font tools, so
+# it is deliberately not pinned here. tools/build-font.mjs only shells out to
+# pyftsubset, so no node version can change the output bytes.
+if ! command -v node >/dev/null 2>&1; then
+  echo "node is required to run the generator (node --version)" >&2
+  exit 1
+fi
+
+# pyftsubset is found on PATH (build-font.mjs calls it by name, not by path),
+# and brotli on PYTHONPATH for the reason above.
+PATH="$FONTTOOLS_OUT/bin:$PATH" PYTHONPATH="$BROTLI_SITE" \
+  node tools/build-font.mjs "$FONT_OUT/$FONT_SUBDIR"
