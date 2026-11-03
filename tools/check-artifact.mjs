@@ -45,8 +45,42 @@ for (const [index, body] of scripts.entries()) {
 }
 
 // Placeholder comments must not survive the build.
-if (html.includes('__QUANTUM_JS__') || html.includes('__QUANTUM_CSS__')) {
+if (html.includes('__QUANTUM_JS__') || html.includes('__QUANTUM_CSS__') || html.includes('__FONT_FACE__')) {
   problems.push('a build placeholder survived into the artifact');
+}
+
+/*
+ * The embedded font faces.
+ *
+ * The artifact declares its own fonts because golden screenshots contain
+ * painted text, and `system-ui` resolves to whatever the host provides: CI and
+ * this container disagreed, glyph advances shifted, and the full-page goldens
+ * failed there while the canvas-only ones passed. That fix only holds if the
+ * faces are actually in the file, so their presence and form are asserted here
+ * rather than left to a screenshot that would only show the symptom.
+ *   - Two faces, Regular and Bold: with one face, each engine synthesises its
+ *     own bold, and synthetic stem weight varies between engines.
+ *   - Data URI, not a URL: a fetched font breaks the offline single-file
+ *     promise, which is the same class of bug as a stray <script src>.
+ *   - wOF2 magic: base64 that decodes to something else (a truncated file, a
+ *     TTF committed by mistake) is a build error, not a page that renders in
+ *     a fallback face and drifts.
+ */
+const faces = [...html.matchAll(/@font-face\s*\{[^}]*\}/g)].map((m) => m[0]);
+if (faces.length !== 2) {
+  problems.push(`expected 2 @font-face rules for the embedded faces, found ${faces.length}`);
+}
+for (const [index, rule] of faces.entries()) {
+  const dataUri = rule.match(/url\(data:font\/woff2;base64,([A-Za-z0-9+/]+={0,2})\)/);
+  if (!dataUri) {
+    problems.push(`@font-face ${index} has no inline data:font/woff2;base64 source`);
+    continue;
+  }
+  const bytes = Buffer.from(dataUri[1], 'base64');
+  const magic = bytes.subarray(0, 4).toString('latin1');
+  if (magic !== 'wOF2') {
+    problems.push(`@font-face ${index} decodes to ${JSON.stringify(magic)}, not a WOFF2 signature`);
+  }
 }
 
 if (problems.length > 0) {
