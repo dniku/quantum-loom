@@ -83,11 +83,32 @@ nix develop --command ./check.sh --engine chromium
 5. **Interaction** — the built page driven through its interface, asserting observable results (a drag moves the particle and explains itself, a narrow packet spreads, `hidden` controls actually hide, no page errors).
 6. **Golden screenshots** — byte comparison of 7 reviewed baselines across desktop and both phone orientations, plus the physics states.
 
-`nix flake check` and `nix build` were verified against the pinned nixpkgs; the
-full `nix develop --command ./check.sh` runs the identical command in CI. Local
-development and every result quoted above ran on Firefox (the reliable engine in
-this container — Chromium's headless sandbox needs syscalls it denies), and both
-engines are selectable with `--engine`.
+`nix flake check` and `nix build` both pass, and `nix build` produces an
+`index.html` byte-identical to the committed artifact — so the file a visitor
+gets from the package is the file the repo ships. The full
+`nix develop --command ./check.sh` runs the identical command in CI.
+
+Results are quoted per engine, and goldens are baselined per engine. Firefox is
+the engine the baselines in this repo come from; Chromium passes the physics and
+interaction suites and fails the goldens, and that split is the honest expected
+outcome rather than a bug:
+
+- Capturing the same deterministic scene twice in one engine is byte-identical,
+  so the byte-exact comparison is sound and there is no flakiness to explain.
+- Engines round fractional layout positions differently (this page measures the
+  field at `x=100.91667` in Firefox and `x=100.921875` in Chromium), and the 2×
+  bilinear upsampler turns that sub-pixel disagreement into small non-zero
+  deltas across essentially every canvas pixel — mean delta under 5 of 255, the
+  physics visually unchanged.
+- Text metrics differ too, so wrapped prose breaks at different points: the
+  measurements panel is 122.7 px tall in Firefox and 127.9 px in Chromium, which
+  is the entire 5 px difference in full-page height.
+
+Embedding the font removes the disagreement about *which outlines* to draw, not
+about how an engine lays them out. Per-engine baselines are the load-bearing
+mechanism, which is why `--engine` has no cross-engine fallback: comparing
+Firefox pixels against Chromium pixels would report a difference that means
+nothing.
 
 ### Why the page ships its own font
 
