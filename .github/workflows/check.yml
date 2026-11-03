@@ -32,6 +32,21 @@ jobs:
           extra_nix_config: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
+      # packages.default is the shipped artifact, so a broken package build has
+      # to be a red build. This was broken and green at the same time: the
+      # checklist below only runs `nix develop`, so nothing built the package
+      # until a developer ran `nix build` by hand. Checking the output is the
+      # point of having a package at all.
+      - name: Build the package and check it matches the committed artifact
+        run: |
+          # Addressed by store path rather than a result symlink: --no-link
+          # creates no symlink, so the obvious `result/index.html` is a missing
+          # file, and that is easy to miss when the failure looks like a build
+          # error rather than a wrong path.
+          OUT=$(nix build --no-link --print-out-paths)
+          sha256sum "$OUT/index.html" index.html
+          test "$(sha256sum < "$OUT/index.html")" = "$(sha256sum < index.html)"
+
       - name: Run the acceptance checklist
         run: nix develop --command ./check.sh --engine firefox
 
