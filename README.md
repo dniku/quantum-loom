@@ -1,5 +1,7 @@
 # Quantum Loom
 
+[![CI](https://github.com/dniku/quantum-loom/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/dniku/quantum-loom/actions/workflows/check.yml) **[▶ Play it live](https://raw.githack.com/dniku/quantum-loom/main/index.html)**
+
 One quantum particle, in a flat box, simulated rather than faked — and the Fourier transform that makes it behave strangely.
 
 Drag anywhere on the picture to place the particle and send it moving. Watch it spread, watch a standing wave refuse to move, and watch what confining it to a small region does to its momentum. Nothing here is a recorded animation: the [Schrödinger equation](https://en.wikipedia.org/wiki/Schr%C3%B6dinger_equation) is solved for the state on screen, every frame.
@@ -40,7 +42,7 @@ Two modelling choices are stated rather than hidden:
 
 ## Running it
 
-`index.html` is a single self-contained file: no network, no dependencies, no storage, works offline and from `file://`. Open it directly in a browser.
+`index.html` is a single self-contained file: no network, no dependencies, no storage, works offline and from `file://`. It embeds its own font faces, so nothing is fetched at runtime — not even a typeface. Open it directly in a browser.
 
 ```sh
 # build index.html from the modular sources in src/
@@ -49,6 +51,19 @@ nix build            # or: nix develop --command node tools/build.mjs
 # open it
 xdg-open index.html
 ```
+
+## Playing it online
+
+**<https://raw.githack.com/dniku/quantum-loom/main/index.html>** runs the page straight out of this repo — no build, no hosting — which works only because the page is one file that asks for nothing else. That it really is this file is worth checking rather than taking on faith:
+
+```bash
+curl -s https://raw.githack.com/dniku/quantum-loom/main/index.html | sha256sum
+sha256sum index.html                             # same digest
+```
+
+Two things to expect. rawgithack puts a one-time **External Content Notice** in front of any HTML it proxies, with an *Open the page* button: the toy is behind that click, and it remembers. And it caches for about a minute, so a fresh push takes a moment to appear — `rawcdn.githack.com` is the edge-cached mirror of the same path, and a commit SHA instead of `main` gives a link that cannot move. It is somebody else's server, so it is a demo path; the file in this repo is the artifact.
+
+`raw.githubusercontent.com` will not work, and not for the usual reason: GitHub serves it as `text/plain` with `content-security-policy: default-src 'none'; sandbox`, and Chromium runs no script from it whatsoever. Stripping that is the whole job rawgithack exists to do.
 
 ## Development and testing
 
@@ -74,6 +89,18 @@ development and every result quoted above ran on Firefox (the reliable engine in
 this container — Chromium's headless sandbox needs syscalls it denies), and both
 engines are selectable with `--engine`.
 
+### Why the page ships its own font
+
+The stylesheet used to ask for `system-ui`, and the golden suite paid for it: CI's Firefox resolved that to a different face than this container's, glyph advances shifted, and the three full-page baselines failed there while all four canvas-only ones passed — the canvas carries no text, so only the painted words disagreed.
+
+So the artifact embeds two subset WOFF2 faces (Regular and Bold, ~15 KiB together) as data URIs and asks for them by one family name. Nothing on the host is consulted, which makes a baseline mean the same pixels on any machine — and is simply what "one file that works offline" requires, since a font fetched from the operating system is still an external dependency. Both weights are embedded because the sheet asks for 550 and 600 too, and with a single face each engine synthesises its own bold, whose stem weight varies by engine: the same drift, arriving by a different route.
+
+The subset covers Latin-1 plus the physics symbols the copy uses (`ħ`, `σ`, `ψ`, `×`, `–`, `—`, `²`), which is a contract rather than an accident — a glyph missing from the subset falls back silently for that one character and changes a line's width, reappearing only on a machine with different fonts. `tools/build-font.mjs` regenerates the faces from the pinned nixpkgs and asserts the WOFF2 signature; `check-artifact.mjs` asserts the built page contains both faces as inline data URIs, so the fix cannot rot quietly into a fallback stack.
+
+```sh
+./tools/with-fonttools.sh    # regenerates build/*.woff2.base64; not needed to build, test, or view
+```
+
 Regenerate and **review** baselines after an intentional visual change (a byte-equal screenshot proves pixels did not change, not that they look right — each new baseline is viewed before it is accepted):
 
 ```sh
@@ -86,7 +113,8 @@ The golden suite reuses one browser per scene and takes about a minute; the phys
 
 ```
 src/            quantum.js (physics) · app.js (UI) · styles.css · index.template.html
-tools/          build-lib.mjs (inliner) · browser.mjs (Playwright harness) · checks
+tools/          build-lib.mjs (inliner) · browser.mjs (Playwright harness) · build-font.mjs · checks
+build/          committed base64 WOFF2 subsets read by the inliner
 tests/          physics · interaction · golden, plus tests/golden/*.png baselines
 docs/           README screenshots
 index.html      the built, self-contained artifact
