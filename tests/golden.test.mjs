@@ -13,10 +13,14 @@
  * Determinism, and why it holds: the app's simulation is exact and repeatable
  * for a given number of steps (verified in physics.test.mjs to round-off), and
  * every golden scenario advances a fixed step count through __quantum.stepFrames
- * rather than relying on wall-clock animation. Fonts are the platform's own, so
- * the *text* pixels depend on the machine's fontconfig — which is why the
- * baselines are compared per-engine and the CI pins one. The canvas pixels,
- * which carry the physics, do not depend on fonts at all.
+ * rather than relying on wall-clock animation. The artifact also embeds its own
+ * font faces (see tools/build-font.mjs), so the text pixels no longer depend on
+ * the host's fontconfig either. That mattered: with the platform's own font the
+ * three full-page goldens failed on CI while the four canvas-only ones passed,
+ * because the canvas carries no text and only the painted words disagreed.
+ * A missing baseline is an error rather than a skip, and the comparison is
+ * still done per-engine, since rasterisation differs between engines even when
+ * the outlines are the same.
  *
  * Usage:
  *   node tests/golden.test.mjs                 # compare against baselines
